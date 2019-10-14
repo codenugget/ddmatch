@@ -8,4 +8,4 @@ History
 -------
 
 Initiated by Klas Modin and developed by Carl-Joar Karlsson.
-Improvements are due to the developers, including [Henrik Gingsjö](github.com/hengin)
+Improvements are due to the developers, including [Henrik Gingsjö](https://github.com/hengin)
