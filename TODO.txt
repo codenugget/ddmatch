@@ -1,0 +1,59 @@
+Immediate:
+[ ] Establish a MVD
+
+High:
+[ ] Draw the deformed grid
+[ ] Verify that ddm implemenation works (or does not work)
+
+Convenience:
+[ ] Better console output in example app and add some verbosity flag
+
+Investigate:
+[ ] Generalize to arbitrary width / height
+	Might be required to perform a Chirp Z transform
+[ ] Should I use modules in c++ or not? (probably not at this stage)
+
+Polish:
+[ ] Profiling
+[ ] gtest: Replace printf() with std::cout to be able to prune the output while running tests?
+[ ] cleanup stage (mostly I've bloated the ImageLib with unused functions)
+
+Unit testing:
+[ ] Add more test cases to make sure code conversion works as expected
+[ ] Add test cases for TCube
+[ ] Need to think over more of what I want to test here
+	[ ] Add test cases for FFT/IFFT
+	[ ] Add test cases for CZT/ICZT
+	[ ] Add test cases for DFT/IDFT
+[ ] These are semi-public functions, the most important ones are FFT/IFFT, CZT/ICZT, DFT/IDFT
+	[ ] Add test cases for CirculantMultiply
+	[ ] Add test cases for SkewCirculantMultiply
+	[ ] Add test cases for ToeplitzMultiplyE
+	[ ] Add test cases for ToeplitzMultiplyP
+
+WON'T FIX:
+[x] Wrap vec<vec<double>> to something else for efficiency?
+  REASON: already done differently
+
+Done:
+[x] Make it possible to run the simplest example
+[x] Pythons modulo differs from c++, need to do: ((x % n) + n) % n to make them the work same
+[x] Find the bugs
+[x] Need to evaluate the proper fourier coefficients at fftn and ifftn
+	see: DiffeoFunctionMatching.cpp rows 437, 438, 446, 447
+	[x] Investigate how the fourier coefficients are solved in np.fft.fftn abd np.fft.ifftn
+[x] Add test cases for core lib
+[x] Add gtest to failing function(s)
+[x] Add gtest to the project structure
+[x] Separate code from example app to ddmatchLib so we can test it
+[x] Replace usage of dImage with TGrid<double> in DiffeoFunctionMatching
+[x] Replace usage of dImage with TGrid<double> in Diffeo_functions
+[x] Fix so it's possible to use const operator[] in TGrid TCube etc
+[x] Fix DFT / iDFT
+[x] Add properly implemented FFT / iFFT
+[x] Seems ICZT contains errors
+[x] chirp-z
+	[x] Evaluate W^(k^2/2), W^(-k^2/2) and A^(-k)
+[x] Add test cases for ZeroPad
+
+
