@@ -1,12 +1,19 @@
 High:
 [ ] Decide what FFT package to pick.
+[ ] Add new test-app for making a minimal working example with FFT choice.
+[ ] vcpkg integration, note that we might want to be able to use:
+	[ ] Intel MKL (which has a version from 2020 included in vcpkg)
+	[ ] nlohmann / json, https://github.com/nlohmann/json
+[ ] Rewrite the old example app to be more complete... currently it's just a hack.
+	We should have a data-driven way (JSON) to:
+		Opt-in how often we want to dump images, what images to dump etc
+		Read new source/target images.
+		Control solver configuration.
 [ ] Read other images than squares.
 [ ] Read images of other resolutions.
 
-Convenience:
-[ ] Draw the deformed grid
-
 Future:
+[ ] Draw the deformed grid
 [ ] Generalize to arbitrary width / height
 	INVESTIGATE: Might be required to perform a Chirp Z transform
 [ ] gtest: Replace printf() with std::cout to be able to prune the output while running tests?
