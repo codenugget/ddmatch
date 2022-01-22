@@ -1,11 +1,7 @@
-/export/
 /runtime/build/
 /runtime/example
 /runtime/fft_test
-/runtime/overview.png
 /runtime/resize
-/runtime/ttf/
-/runtime/translation/
 /runtime/UnitTesting_*
 /vcpkg/
 

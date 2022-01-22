@@ -10,8 +10,6 @@ if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg)
 		)
 endif()
 
-set(VCPKG_TARGET_TRIPLET "x64-linux")
-
 if (WIN32)
 	set(VCPKG_TARGET_TRIPLET "x64-windows-mixed")
 	set(VCPKG_OVERLAY_TRIPLETS "custom_triplets")
