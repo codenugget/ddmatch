@@ -28,8 +28,8 @@ endif()
 
 project(ddmatch)
 
-find_package(GTest REQUIRED)
-find_package(FFTW3 REQUIRED)
+find_package(GTest CONFIG REQUIRED)
+find_package(FFTW3 CONFIG REQUIRED)
 
 include_directories(
 	"src/cpp"
