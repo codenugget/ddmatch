@@ -7,12 +7,11 @@ if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg)
 		"git clone https://github.com/Microsoft/vcpkg.git --depth 1\n"
 		"cd vcpkg\n"
 		"./bootstrap-vcpkg.sh"
+		"./vcpkg install gtest:x64-linux fftw3:x64-linux"
 		)
 endif()
 
 if (WIN32)
-	set(VCPKG_TARGET_TRIPLET "x64-windows-mixed")
-	set(VCPKG_OVERLAY_TRIPLETS "custom_triplets")
 	set(CMAKE_GENERATOR_PLATFORM x64) # Force 64 bits
 elseif (LINUX)
 	set(VCPKG_TARGET_TRIPLET "x64-linux")
