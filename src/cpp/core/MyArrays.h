@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <complex>
+#include <tuple>
 #include <vector>
 
 template<typename T>

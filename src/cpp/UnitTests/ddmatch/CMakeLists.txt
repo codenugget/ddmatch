@@ -28,6 +28,7 @@ target_link_libraries(${PROJECT_NAME}
   ddmatchLib
 )
 endif()
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
   WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}

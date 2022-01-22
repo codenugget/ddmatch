@@ -25,6 +25,7 @@ target_link_libraries(${PROJECT_NAME}
   PRIVATE GTest::gmock GTest::gtest GTest::gmock_main GTest::gtest_main
 )
 endif()
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
   WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}

@@ -6,6 +6,7 @@ set(src
 )
 
 add_executable(${PROJECT_NAME} ${src})
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
 add_dependencies(${PROJECT_NAME}
     ddmatchLib

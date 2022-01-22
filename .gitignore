@@ -1,4 +1,4 @@
-/src/py/
+/export/
 /runtime/build/
 /runtime/example
 /runtime/fft_test
@@ -7,3 +7,5 @@
 /runtime/ttf/
 /runtime/translation/
 /runtime/UnitTesting_*
+/vcpkg/
+

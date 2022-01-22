@@ -22,9 +22,9 @@ std::vector<T> get_col(int c, const TGrid<T>& grid) {
 inline void calc_fft(cdGrid& res) {
   int Mc = res.cols();
   int Mr = res.rows();
-  std::complex<double> Wr = std::exp(std::complex(0.0, -2.0 * M_PI / Mr));
-  std::complex<double> Wc = std::exp(std::complex(0.0, -2.0 * M_PI / Mc));
-  std::complex<double> A = std::complex(1.0, 0.0);
+  std::complex<double> Wr = std::exp(std::complex<double>(0.0, -2.0 * M_PI / Mr));
+  std::complex<double> Wc = std::exp(std::complex<double>(0.0, -2.0 * M_PI / Mc));
+  std::complex<double> A = std::complex<double>(1.0, 0.0);
 
   for (int x = 0; x < Mc; ++x) {
     auto signal = get_col(x, res);
@@ -46,9 +46,9 @@ inline void calc_fft(cdGrid& res) {
 inline void calc_ifft(cdGrid& res) {
   int Mc = res.cols();
   int Mr = res.rows();
-  std::complex<double> Wr = std::exp(std::complex(0.0, -2.0 * M_PI / Mr));
-  std::complex<double> Wc = std::exp(std::complex(0.0, -2.0 * M_PI / Mc));
-  std::complex<double> A = std::complex(1.0, 0.0);
+  std::complex<double> Wr = std::exp(std::complex<double>(0.0, -2.0 * M_PI / Mr));
+  std::complex<double> Wc = std::exp(std::complex<double>(0.0, -2.0 * M_PI / Mc));
+  std::complex<double> A = std::complex<double>(1.0, 0.0);
 
   for (int y = 0; y < Mr; ++y) {
     auto signal = get_row(y, res);
