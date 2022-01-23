@@ -11,8 +11,8 @@ RUN apt-get install vim -y
 RUN apt-get install curl -y
 RUN curl -L https://raw.githubusercontent.com/docker/compose/1.29.2/contrib/completion/bash/docker-compose -o /etc/bash_completion.d/docker-compose
 
-#RUN alias gcc=/usr/bin/gcc-10
-#RUN alias g++=/usr/bin/g++-10
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 1
+RUN update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 1
 
 #COPY somefolder /destfolder
 #COPY some.file  /folder/some.file
