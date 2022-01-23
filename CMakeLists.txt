@@ -33,7 +33,6 @@ find_package(FFTW3 CONFIG REQUIRED)
 
 include_directories(
 	"src/cpp"
-	"external/include"
 )
 
 add_subdirectory(src)
