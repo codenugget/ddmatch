@@ -1,7 +1,4 @@
-/runtime/build/
-/runtime/example
-/runtime/fft_test
-/runtime/resize
-/runtime/UnitTesting_*
+/runtime/
+/scripts/build/
 /vcpkg/
 
