@@ -29,10 +29,11 @@ RUN cd /app && git clone https://github.com/Microsoft/vcpkg.git --depth 1
 RUN cd /app/vcpkg && ./bootstrap-vcpkg.sh && ./vcpkg install gtest:x64-linux fftw3:x64-linux
 
 # copy local files to be built
-COPY scripts /app/scripts
+COPY scripts/build.sh /app/scripts/build.sh
+COPY scripts/container_cmake.sh /app/scripts/container_cmake.sh
 COPY src /app/src
 COPY CMakeLists.txt /app
-RUN cd /app/scripts && ./container_cmake.sh
+RUN cd /app/scripts; ./container_cmake.sh
 
-CMD cd /app/scripts; ./container_build.sh
+CMD cd /app/scripts; ./build.sh
 

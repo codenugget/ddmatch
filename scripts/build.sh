@@ -19,7 +19,7 @@ fi
 if [ ! -d build ]; then
   mkdir -p build
   cd build
-  cmake $BUILD_ROOT_DIR -DCMAKE_BUILD_TYPE=Release -DCONTAINER_BUILD_HACK=False
+  cmake $BUILD_ROOT_DIR -DCMAKE_BUILD_TYPE=Release
 else
   cd build
 fi
