@@ -22,9 +22,17 @@ RUN apt-get install curl -y
 # enables tab-completion and some colors
 RUN curl -L https://raw.githubusercontent.com/docker/compose/1.29.2/contrib/completion/bash/docker-compose -o /etc/bash_completion.d/docker-compose
 
+
+RUN mkdir -p /app
+# the following two lines will build in vcpkg and the library dependencies we have... optional
+RUN cd /app && git clone https://github.com/Microsoft/vcpkg.git --depth 1
+RUN cd /app/vcpkg && ./bootstrap-vcpkg.sh && ./vcpkg install gtest:x64-linux fftw3:x64-linux
+
 # copy local files to be built
-RUN mkdir -p /app/runtime
 COPY scripts /app/scripts
 COPY src /app/src
 COPY CMakeLists.txt /app
+RUN cd /app/scripts && ./container_cmake.sh
+
+CMD cd /app/scripts; ./container_build.sh
 
