@@ -23,7 +23,8 @@ RUN apt-get install curl -y
 RUN curl -L https://raw.githubusercontent.com/docker/compose/1.29.2/contrib/completion/bash/docker-compose -o /etc/bash_completion.d/docker-compose
 
 # copy local files to be built
-COPY runtime /app/runtime
+RUN mkdir -p /app/runtime
+COPY scripts /app/scripts
 COPY src /app/src
 COPY CMakeLists.txt /app
 

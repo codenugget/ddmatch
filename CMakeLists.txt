@@ -31,8 +31,18 @@ project(ddmatch)
 find_package(GTest CONFIG REQUIRED)
 find_package(FFTW3 CONFIG REQUIRED)
 
+if (CONTAINER_BUILD_HACK)
+include_directories(
+	"src/cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/installed/x64-linux/include"
+)
+link_directories(
+	"${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/installed/x64-linux/lib"
+)
+else()
 include_directories(
 	"src/cpp"
 )
+endif()
 
 add_subdirectory(src)
