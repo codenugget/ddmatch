@@ -1,8 +1,6 @@
 project(UnitTesting_ddmatch)
 
-if (MSVC)
 find_package(GTest CONFIG REQUIRED)
-endif()
 
 set(src
   main.cpp
@@ -14,20 +12,12 @@ add_dependencies(${PROJECT_NAME}
   ddmatchLib
 )
 
-if (UNIX)
-target_link_libraries(${PROJECT_NAME}
-  ddmatchLib
-  gtest
-  pthread
-)
-endif()
-
-if (MSVC)
 target_link_libraries(${PROJECT_NAME}
   PRIVATE GTest::gmock GTest::gtest GTest::gmock_main GTest::gtest_main
   ddmatchLib
+  pthread
 )
-endif()
+
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

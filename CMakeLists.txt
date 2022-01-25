@@ -33,10 +33,6 @@ find_package(FFTW3 CONFIG REQUIRED)
 
 include_directories(
 	"src/cpp"
-	"${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/installed/x64-linux/include"
-)
-link_directories(
-	"${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/installed/x64-linux/lib"
 )
 
 add_subdirectory(src)

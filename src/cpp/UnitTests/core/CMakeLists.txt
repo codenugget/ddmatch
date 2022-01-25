@@ -1,8 +1,6 @@
 project(UnitTesting_core)
 
-if (MSVC)
 find_package(GTest CONFIG REQUIRED)
-endif()
 
 set(src
   main.cpp
@@ -13,18 +11,11 @@ set(src
 
 add_executable(${PROJECT_NAME} ${src})
 
-if (UNIX)
-target_link_libraries(${PROJECT_NAME}
-  gtest
-  pthread
-)
-endif()
-
-if (MSVC)
 target_link_libraries(${PROJECT_NAME}
   PRIVATE GTest::gmock GTest::gtest GTest::gmock_main GTest::gtest_main
+  pthread
 )
-endif()
+
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
