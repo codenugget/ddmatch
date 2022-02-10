@@ -6,6 +6,9 @@
 
 #include "core/MyArrays.h"
 
+typedef std::vector<int> VecInt;
+typedef std::vector<double> VecDbl;
+
 bool image_compose_2d(const dGrid& I, const dGrid& xphi, const dGrid& yphi, dGrid& Iout);
 
 bool eval_diffeo_2d(
@@ -21,6 +24,8 @@ bool diffeo_compose_2d(
 
 bool diffeo_gradient_y_2d(const dGrid& I, dGrid& dIdx, dGrid& dIdy);
 bool diffeo_gradient_x_2d(const dGrid& I, dGrid& dIdx, dGrid& dIdy);
+
+bool smoothing(dGrid& v, double& alpha, double& beta);
 
 bool image_gradient_2d(const dGrid& I, dGrid& dIdx, dGrid& dIdy);
 

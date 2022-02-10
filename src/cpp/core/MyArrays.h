@@ -521,6 +521,32 @@ std::vector<T> MyLinspace(T start, T stop, int num, bool endpoint) {
   return ret;
 }
 
+template<typename T>
+std::vector<T> MyKvector(T start, T stop, int num) {
+  std::vector<T> ret(num, T(0));
+  // This does not include the endpoint. If num=10 then the output has 10 elements, starting at 0.
+  // TODO This assumes that T.rows()=num, so it is not general..
+  double step = 0;
+  int numplus = num+1;
+  if (num%2==0) { // true = num is even
+    step = double(stop - start) / num;  // This should be an integer
+    for (int i = 0; i < num/2; ++i)
+      ret[i] = start + i * step;
+    for (int i = num/2; i < numplus; ++i)
+      ret[i] = -stop + i * step;
+  }
+  else { // num is odd
+    int numminus = num-1;
+    step = double(stop - start) / num;
+    for (int i = 0; i < numminus/2; ++i)
+      ret[i] = start + i * step;
+    for (int i = numminus/2; i < numplus; ++i)
+      ret[i] = -stop + i * step + 1;
+  }
+  return ret;
+}
+
+
 enum class Indexing {
   xy,
   ij

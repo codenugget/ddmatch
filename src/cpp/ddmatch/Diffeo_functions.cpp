@@ -1,5 +1,9 @@
 #include <cmath>
 #include <limits>
+#include <tuple>
+#include <fftw3.h>
+#include "core/MyVec.h"
+#include "core/MyArrays.h"
 #include "Diffeo_functions.h"
 
 // returns v0_idx, v1_idx, frac_dv
@@ -223,6 +227,90 @@ bool diffeo_gradient_x_2d(const dGrid& I, dGrid& dIdx, dGrid& dIdy) {
   for(int j = 1; j < w-1; ++j)
     for(int i = 0; i < h; ++i)
       dIdx[i][j] = (I[i][j+1] - I[i][j-1])/2.0;
+  return true;
+}
+
+
+bool smoothing(dGrid& v, double& alpha, double& beta) {
+  int nrow = v.rows();
+  int ncol = v.cols();
+  int N = nrow*ncol;
+  if (nrow != ncol)
+    return false;
+
+  fftw_complex *in, *out;
+  in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (ncol*nrow));
+  out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (ncol*nrow));
+  for (int i=0; i<nrow; i++) { 
+    for (int j=0; j<ncol; j++) { 
+      in[j+ncol*i][0] = v[i][j]; // real part
+      in[j+ncol*i][1] = 0; // imag part
+    }
+  }
+  // TODO: Move plan stage out of iteration
+  fftw_plan p = fftw_plan_dft_2d(nrow, ncol, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+  fftw_execute(p); 
+
+  auto to_double = [](const VecInt& vec) -> VecDbl { // Can we move this?
+    VecDbl ret;
+    ret.reserve(vec.size());
+    for(auto i : vec)
+      ret.push_back(double(i));
+    return ret;
+  };
+  // Why create as int and then convert to double instead of create as double?
+  auto v1 = to_double(MyKvector<int>(0, ncol, nrow));  //outputs (0,1,...,127,-128,-127,...,-1)
+  auto v2 = to_double(MyKvector<int>(0, ncol, nrow));
+
+  dGrid Kx, Ky;
+  std::tie(Kx, Ky) = MyMeshGrid(v1, v2, Indexing::ij);
+
+  const auto mul_sq = [&](const double e) -> double {
+    double m = e * beta;
+    return m*m;
+  };
+
+  dGrid multipliers = values_like(Kx, alpha) +
+    elem_func(Kx, mul_sq) + elem_func(Ky, mul_sq);
+
+  const auto inv_f = [&](const double e) -> double {
+    return 1.0 / e;
+  };
+  dGrid Linv = elem_func(multipliers, inv_f);
+  double linv[N];
+  for (int i = 0; i < nrow; i++) {
+    for (int j = 0; j < ncol; j++) { 
+      linv[j+ncol*i] = Linv[i][j];
+    }
+  }
+  std::vector<std::complex<double>> Lv(N);  //TODO: remove
+  for (int i = 0; i < N; i++) {
+    std::complex<double> thisz(out[i][0],out[i][1]);
+    Lv[i] = linv[i] * thisz;
+    out[i][0] = real(Lv[i]);
+    out[i][1] = imag(Lv[i]);
+  }
+  
+  fftw_complex *res;
+  res = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (ncol*nrow));
+  // Inverse indicated by flag FFTW_BACKWARD
+  fftw_plan ip = fftw_plan_dft_2d(nrow, ncol, out, res, FFTW_BACKWARD, FFTW_ESTIMATE); 
+  fftw_execute(ip); 
+  double Ninv = 1.0/N;
+  for (int i = 0; i < N; i++) {
+    res[i][0] = res[i][0] * Ninv;
+    res[i][1] = res[i][1] * Ninv;
+  }
+  for (int i = 0; i < nrow; i++) {
+    for (int j = 0; j < ncol; j++) {
+      v[i][j] = res[j+ncol*i][0];
+    }
+  }
+  fftw_destroy_plan(p);
+  fftw_destroy_plan(ip);
+  fftw_free(in);
+  fftw_free(out);
+  fftw_free(res);
   return true;
 }
 

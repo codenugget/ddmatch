@@ -1,5 +1,6 @@
 #include <array>
 #include <cmath>
+#include <fftw3.h>
 
 #include "DiffeoFunctionMatching.h"
 #include "Diffeo_functions.h"
@@ -27,8 +28,8 @@ std::tuple<std::unique_ptr<DiffeoFunctionMatching>, std::string> DiffeoFunctionM
 }
 
 void DiffeoFunctionMatching::setup() {
-  const dGrid& I0 = m_target;
-  const dGrid& I1 = m_source;
+  const dGrid& I0 = m_source;
+  const dGrid& I1 = m_target;
 
   // Create optimized algorithm functions
   //self.image_compose = image_compose_2d;//generate_optimized_image_composition(I1)
@@ -176,9 +177,9 @@ void DiffeoFunctionMatching::setup() {
   };
 
   //k.resize(2);
-  auto v1 = to_double(MyLinspace<int>(0, I1.cols(), I1.rows(), false));
+  auto v1 = to_double(MyKvector<int>(0, I1.cols(), I1.rows()));
   copyto(k[0], v1);
-  auto v2 = to_double(MyLinspace<int>(-I1.cols(), 0, I1.rows(), false));
+  auto v2 = to_double(MyKvector<int>(0, I1.cols(), I1.rows()));
   copyto(k[1], v2);
 
   /* not completed yet
@@ -419,33 +420,37 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     //m_vx = -(m_I-m_target)*m_dIdx + (2.0*m_sigma)*m_Jmap[1]; //# axis: [1]
     //m_vy = -(m_I-m_target)*m_dIdy + (2.0*m_sigma)*m_Jmap[0]; //# axis: [0]
 
+    // Perform Fourier transform and multiply with inverse of A
+    smoothing(m_vx, m_alpha, m_beta);
+    smoothing(m_vy, m_alpha, m_beta);
+
     //fftx = np.fft.fftn(self.vx)
     //ffty = np.fft.fftn(self.vy)
     //fftx *= self.Linv
     //ffty *= self.Linv
 
     // TODO: This part is very slow and needs to be rewritten
-    cdGrid fftx = to_cdGrid(m_vx);
-    cdGrid ffty = to_cdGrid(m_vy);
-    calc_fft(fftx);
-    calc_fft(ffty);
+    //cdGrid fftx = to_cdGrid(m_vx);
+    //cdGrid ffty = to_cdGrid(m_vy);
+    //calc_fft(fftx);
+    //calc_fft(ffty);
     //cdGrid fftx = fftn(m_vx);
     //cdGrid ffty = fftn(m_vy);
-    self_mul(fftx, m_Linv);
-    self_mul(ffty, m_Linv);
+    //self_mul(fftx, m_Linv);
+    //self_mul(ffty, m_Linv);
 
     //self.vx[:] = -np.fft.ifftn(fftx).real # vx[:]=smth will copy while vx=smth directs a pointer
     //self.vy[:] = -np.fft.ifftn(ffty).real
     //m_vx[:] = -ifftn(fftx).real(); // vx[:]=smth will copy while vx=smth directs a pointer
     //m_vy[:] = -ifftn(ffty).real();
-    calc_ifft(fftx);
-    calc_ifft(ffty);
+    //calc_ifft(fftx);
+    //calc_ifft(ffty);
     // Q: Real part or amplitude?
     const auto proc_elem1 = [](const std::complex<double> e) {
       return -e.real();
     };
-    elem_set(m_vx, fftx, proc_elem1);
-    elem_set(m_vy, ffty, proc_elem1);
+    //elem_set(m_vx, fftx, proc_elem1);
+    //elem_set(m_vy, ffty, proc_elem1);
     //m_vx = -(real(fftx)); // vx[:]=smth will copy while vx=smth directs a pointer
     //m_vy = -(real(ffty));
 

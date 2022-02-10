@@ -16,6 +16,7 @@ target_link_libraries(${PROJECT_NAME}
   PRIVATE GTest::gmock GTest::gtest GTest::gmock_main GTest::gtest_main
   ddmatchLib
   pthread
+  fftw3
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.10)
 
 if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg)
 	message( FATAL_ERROR
