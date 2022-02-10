@@ -128,8 +128,8 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, const std::string& s
   printf("%s Initializing\n", subpath.c_str());
 
   bool compute_phi = true;
-  double alpha = 0.001;
-  double beta  = 0.03;
+  double alpha = 1.0;
+  double beta  = 1.0;
   double sigma = 0.05;
 
   auto [dfm, msg] = DiffeoFunctionMatching::create(I0, I1, alpha, beta, sigma, compute_phi);
@@ -145,10 +145,10 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, const std::string& s
   fs::create_directories(overview_path);
   fs::create_directories(steps_path);
 
-  int num_iters = 1000;
+  int num_iters = 100;
   double epsilon = 0.1;
 
-  int loop_iters = 100;
+  int loop_iters = 10;
   int num_steps = num_iters / loop_iters;
   int rest_iters = num_iters % loop_iters;
   for (int s = 0; s < num_steps; ++s) {
@@ -301,7 +301,7 @@ int main(int argc, char** argv)
     "Some binary \"smoothing\" method may be employed. Instead of single pixels,\n"
     "small squares or circles could be used.";
 
-  Vec2i resolution = { 64,64 };
+  Vec2i resolution = { 128, 128 };
   Vec2i block_p0{ 5,5 };
   Vec2i block_p1{ 25,25 };
   Vec2i offset{ 20,20 };
@@ -315,7 +315,7 @@ int main(int argc, char** argv)
     const auto [I0, I1] = create_density(resolution, 400, block_p0, block_p1, offset, 1.0, gen);
     run_and_save_example(I0, I1, "translation/high_density", description);
   }
-
+  /*
   {
     const auto [I0, I1] = create_density(resolution, 200, block_p0, block_p1, offset, 1.0, gen);
     run_and_save_example(I0, I1, "translation/medium_density", description);
@@ -330,6 +330,7 @@ int main(int argc, char** argv)
     dGrid I1 = create(resolution, block_p0 + offset, block_p1 + offset, 1.0);
     run_and_save_example(I0, I1, "translation/full_density", description);
   }
+  */
 
   return 0;
 }

@@ -420,6 +420,37 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     //m_vx = -(m_I-m_target)*m_dIdx + (2.0*m_sigma)*m_Jmap[1]; //# axis: [1]
     //m_vy = -(m_I-m_target)*m_dIdy + (2.0*m_sigma)*m_Jmap[0]; //# axis: [0]
 
+/*
+    // Test case
+    int N = (int)m_rows*m_cols;
+    double lin[N];
+    for (int i=0; i < N; i++) {
+      lin[i] = exp(-i/double(m_cols));
+    }
+    dGrid vin(m_rows,m_cols,0);
+    for (int i = 0; i < m_rows; i++) {
+      for (int j = 0; j < m_cols; j++) { 
+        vin[i][j] = lin[j+m_cols*i];
+      }
+    }
+    for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 4; j++) {
+        printf("v[%d,%d] = %f\n", i, j, vin[i][j]);
+        //m_vx[i][j] = res[j+m_cols*i][0];  //Q: real part or amplitude?
+      }
+    }
+    smoothing(vin, m_alpha, m_beta);
+    for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 4; j++) {
+        printf("Av[%d,%d] = %f\n", i, j, vin[i][j]);
+        //m_vx[i][j] = res[j+m_cols*i][0];  //Q: real part or amplitude?
+      }
+    }
+    if ( (vin[0][0]-0.025567)*(vin[0][0]-0.025567) < 0.1 ) {
+      printf("OK!\n Av[0,0] = %f\n", vin[0][0]);
+    }
+*/
+
     // Perform Fourier transform and multiply with inverse of A
     smoothing(m_vx, m_alpha, m_beta);
     smoothing(m_vy, m_alpha, m_beta);
