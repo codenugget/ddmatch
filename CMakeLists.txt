@@ -33,6 +33,11 @@ find_package(FFTW3 CONFIG REQUIRED)
 
 include_directories(
 	"src/cpp"
+	"vcpkg/installed/x64-linux/include"
+)
+
+link_directories(
+	"vcpkg/installed/x64-linux/lib"
 )
 
 add_subdirectory(src)
