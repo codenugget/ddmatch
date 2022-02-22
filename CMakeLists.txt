@@ -30,6 +30,7 @@ project(ddmatch)
 
 find_package(GTest CONFIG REQUIRED)
 find_package(FFTW3 CONFIG REQUIRED)
+find_package(matplot++ CONFIG REQUIRED)
 
 include_directories(
 	"src/cpp"
