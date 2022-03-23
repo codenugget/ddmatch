@@ -53,7 +53,7 @@ void DiffeoFunctionMatching::setup() {
   //m_I1 = I1; // same as m_source
   //self.I = np.zeros_like(I1)
   //np.copyto(self.I,I1)
-  m_I = I1;
+  m_I = I0;
 
   //self.dIdx = np.zeros_like(I1)
   //self.dIdy = np.zeros_like(I1)
@@ -233,7 +233,6 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
   int kE = (int) m_E.size();
   m_E.resize(kE+niter, 0);
   for(int k = 0; k < niter; ++k) {
-    printf("k=%d/%d\n", k+1, niter);
     // OUTPUT
     //np.copyto(self.tmpx, self.I)
     //np.copyto(self.tmpy, self.I0)
@@ -267,6 +266,10 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
 
     //self.E[k+kE] += self.sigma*self.tmpx.sum()
     m_E[k+kE] += m_sigma * sum(m_tmpx);
+
+    // Output progress
+    printf("k=%d/%d,  E=%f\n", k+1, niter,m_E[k+kE]);
+
 
     //self.image_compose(self.I1, self.phiinvx, self.phiinvy, self.I)
     //image_compose_2d(m_I1, m_phiinvx, m_phiinvy, m_I);
