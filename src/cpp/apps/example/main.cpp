@@ -128,9 +128,9 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, const std::string& s
   printf("%s Initializing\n", subpath.c_str());
 
   bool compute_phi = true;
-  double alpha = 1.0;
-  double beta  = 1.0;
-  double sigma = 0.05;
+  double alpha = 0.001;
+  double beta  = 0.03;
+  double sigma = 0.0;
 
   auto [dfm, msg] = DiffeoFunctionMatching::create(I0, I1, alpha, beta, sigma, compute_phi);
   if (!dfm) {
@@ -145,10 +145,10 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, const std::string& s
   fs::create_directories(overview_path);
   fs::create_directories(steps_path);
 
-  int num_iters = 100;
-  double epsilon = 0.1;
+  int num_iters = 400;
+  double epsilon = 0.1; // step size
 
-  int loop_iters = 10;
+  int loop_iters = 80;
   int num_steps = num_iters / loop_iters;
   int rest_iters = num_iters % loop_iters;
   for (int s = 0; s < num_steps; ++s) {
@@ -292,6 +292,20 @@ std::tuple<dGrid, dGrid> create_density(Vec2i resolution,
   return { I0, I1 };
 }
 
+std::tuple<dGrid, dGrid> create_skew(Vec2i resolution,
+  Vec2i nPoints, Vec2i r0, Vec2i offset) {
+  dGrid I0(resolution[0], resolution[1], 0.0);
+  dGrid I1(resolution[0], resolution[1], 0.0);
+
+  for (int row = r0[0]; row < r0[0]+nPoints[0]; ++row) {
+    for (int col = r0[1]; col < r0[1]+nPoints[1]; ++col) {
+      I0[row][col] = 1.0;
+      I1[row + offset[0]][row + col + offset[1]] = 1.0;
+    }
+  }
+  return { I0, I1 };
+}
+
 int main(int argc, char** argv)
 {
   std::string description =
@@ -331,7 +345,11 @@ int main(int argc, char** argv)
     run_and_save_example(I0, I1, "translation/full_density", description);
   }
   */
-
+  {
+    //create_example1(Vec2i resolution, Vec2i nPoints, Vec2i r0, Vec2i offset)
+    const auto [I0, I1] = create_skew({ 128, 128 }, {25,25}, {10,10}, {13,13});
+    run_and_save_example(I0, I1, "translation/skew", description);
+  }
   return 0;
 }
 

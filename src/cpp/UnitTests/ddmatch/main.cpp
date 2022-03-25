@@ -24,6 +24,13 @@ TEST(periodic_1d_Test, wrapping_3) {
   EXPECT_NEAR(frac, 0.1, 0.01);
 }
 
+TEST(periodic_1d_Test, wrapping_4) {
+  const auto [i0, i1, frac] = periodic_1d(-0.1, 20);
+  EXPECT_EQ(i0, 19);
+  EXPECT_EQ(i1, 0);
+  EXPECT_NEAR(frac, 0.9, 0.001);
+}
+
 
 TEST(periodic_1d_shift_Test, small_neg)
 {

@@ -481,7 +481,7 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     //calc_ifft(ffty);
     // Q: Real part or amplitude?
     const auto proc_elem1 = [](const std::complex<double> e) {
-      return -e.real();
+      return e.real();
     };
     //elem_set(m_vx, fftx, proc_elem1);
     //elem_set(m_vy, ffty, proc_elem1);
