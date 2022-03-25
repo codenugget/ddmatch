@@ -74,7 +74,6 @@ bool image_compose_2d(const dGrid& I, const dGrid& xphi, const dGrid& yphi, dGri
   int h = I.rows();
   if (w != h) // for now assume width == height
     return false;
-  int s = w;
   for(int py = 0; py < h; ++py) {
     for(int px = 0; px < w; ++px) {
       const auto [x0, x1, dx] = periodic_1d(xphi[py][px], w);
