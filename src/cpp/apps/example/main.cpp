@@ -129,7 +129,7 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, const std::string& s
 
   bool compute_phi = true;
   double alpha = 0.001;
-  double beta  = 0.03;
+  double beta  = 0.3;
   double sigma = 0.0;
 
   auto [dfm, msg] = DiffeoFunctionMatching::create(I0, I1, alpha, beta, sigma, compute_phi);
@@ -146,7 +146,7 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, const std::string& s
   fs::create_directories(steps_path);
 
   int num_iters = 400;
-  double epsilon = 0.1; // step size
+  double epsilon = 0.5; // step size
 
   int loop_iters = 80;
   int num_steps = num_iters / loop_iters;
