@@ -3,11 +3,25 @@
 
 #include "ddmatch/Diffeo_functions.h"
 
-TEST(Diffeo_functionsTest, periodic_1d) {
+TEST(periodic_1d_Test, wrapping_1) {
   const auto [i0, i1, frac] = periodic_1d(-1e-16, 64);
   EXPECT_EQ(i0, 63);
   EXPECT_EQ(i1, 0);
   EXPECT_NEAR(frac, 1.0, 0.01);
+}
+
+TEST(periodic_1d_Test, wrapping_2) {
+  const auto [i0, i1, frac] = periodic_1d(19.1, 20);
+  EXPECT_EQ(i0, 19);
+  EXPECT_EQ(i1, 0);
+  EXPECT_NEAR(frac, 0.1, 0.01);
+}
+
+TEST(periodic_1d_Test, wrapping_3) {
+  const auto [i0, i1, frac] = periodic_1d(20.1, 20);
+  EXPECT_EQ(i0, 0);
+  EXPECT_EQ(i1, 1);
+  EXPECT_NEAR(frac, 0.1, 0.01);
 }
 
 
