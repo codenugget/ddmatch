@@ -302,7 +302,7 @@ bool smoothing(dGrid& v, double& alpha, double& beta) {
   }
   for (int i = 0; i < nrow; i++) {
     for (int j = 0; j < ncol; j++) {
-      v[i][j] = res[j+ncol*i][0];
+      v[i][j] = -res[j+ncol*i][0];  // return negative of the real part
     }
   }
   fftw_destroy_plan(p);
