@@ -33,10 +33,11 @@ std::unique_ptr<ImageLib::Image> convert_image(const dGrid& grid, const EConvers
     for(int y = 0; y < h; ++y) {
       for(int x = 0; x < w; ++x) {
         dMinVal = std::min<double>(dMinVal, grid[y][x]);
-        dMaxVal = std::min<double>(dMaxVal, grid[y][x]);
+        dMaxVal = std::max<double>(dMaxVal, grid[y][x]);
       }
     }
   }
+  //std::cout << "(min, max) : (" << dMinVal << ", " << dMaxVal << ")   grid: " << grid.rows() << ", " << grid.cols() << "\n";
   const double cRange = dMaxVal - dMinVal;
   const bool cIsDifferenceZero = cRange < zero_limit;
   const double cInvRange = cIsDifferenceZero ? 1.0 : 1.0 / cRange;
@@ -57,6 +58,7 @@ std::unique_ptr<ImageLib::Image> convert_image(const dGrid& grid, const EConvers
 }
 
 bool save_image(const dGrid& grid, const fs::path& filename, const EConversion mode, const double zero_limit) {
+  std::cout << filename << "\n";
   auto img = convert_image(grid, mode, zero_limit);
   const auto [ok, msg] = ImageLib::save(img.get(), filename.string());
   if (!ok)
@@ -64,9 +66,106 @@ bool save_image(const dGrid& grid, const fs::path& filename, const EConversion m
   return ok;
 }
 
-// This function is unfinished!
-dGrid combine_warp(const dGrid& dx, const dGrid& dy) {
-  return dx;
+/*
+# Function definitions
+def plot_warp(xphi, yphi, downsample='auto', **kwarg):
+  """Borrowed from ../difforma_base_example.ipynb."""
+  if (downsample == 'auto'):
+    skip = np.max([xphi.shape[0]/32,1])
+  elif (downsample == 'no'):
+    skip = 1
+  else:
+    skip = downsample
+  plt.plot(xphi[:,skip::skip],yphi[:,skip::skip],'black',\
+           xphi[skip::skip,::1].T,yphi[skip::skip,::1].T,'black', **kwarg)
+*/
+
+void drawline(dGrid& target, double r0, double c0, double r1, double c1, double scale) {
+  // bresenham below
+  int x1 = scale*c0, y1 = scale*r0, x2 = scale*c1, y2 = scale*r1;
+  {
+  const bool steep = (fabs(y2 - y1) > fabs(x2 - x1));
+  if(steep)
+  {
+    std::swap(x1, y1);
+    std::swap(x2, y2);
+  }
+ 
+  if(x1 > x2)
+  {
+    std::swap(x1, x2);
+    std::swap(y1, y2);
+  }
+ 
+  const float dx = x2 - x1;
+  const float dy = fabs(y2 - y1);
+ 
+  float error = dx / 2.0f;
+  const int ystep = (y1 < y2) ? 1 : -1;
+  int y = (int)y1;
+ 
+  const int maxX = (int)x2;
+ 
+  for(int x=(int)x1; x<=maxX; x++)
+  {
+    if(steep)
+    {
+      if (x >= 0 && x < target.cols() &&
+          y >= 0 && y < target.rows()) {
+        target[x][y] = 1.0;
+          }
+    }
+    else
+    {
+      if (x >= 0 && x < target.cols() &&
+          y >= 0 && y < target.rows()) {
+        target[y][x] = 1.0;
+          }
+    }
+ 
+    error -= dy;
+    if(error < 0)
+    {
+        y += ystep;
+        error += dx;
+    }
+  }
+  }
+}
+
+
+// IMPORTANT: We need to go through this so it's ok! Seems backwards warp is drawn a bit wrong but it seems to work otherwise...
+dGrid combine_warp(const dGrid& dx, const dGrid& dy, const int cDivider, const double cResolutionMultiplier) {
+  // xphi[:,skip::skip]      - rows: keep all rows,                                         columns: start at skip, loop until end and increment with skip
+  // xphi[skip::skip, ::1]   - rows: start at skip, loop until end and increment with skip, columns: keep all columns
+  // xphi[skip::skip, ::1].T - T is for transpose
+  // for now rows/cols are the same
+  int skip = cDivider > 0 ? std::max<int>(dx.rows()/cDivider, 1) : 1;
+  dGrid ret(cResolutionMultiplier*dx.rows(), cResolutionMultiplier*dx.cols(), 0.0);
+
+  for (int r0 = skip; r0 < dx.rows(); r0 += skip) {
+    for (int c0 = skip; c0 < dx.cols(); c0 += skip) {
+      int r1 = r0 + skip;
+      int c1 = c0 + skip;
+      double dx00 = dx[r0][c0];
+      double dy00 = dy[r0][c0];
+
+      bool cok = c1 < dx.cols();
+      bool rok = r1 < dx.rows();
+
+      if (cok) {
+        double dx01 = dx[r0][c1];
+        double dy01 = dy[r0][c1];
+        drawline(ret, r0 + dy00, c0 + dx00, r0 + dy01, c1 + dx01, cResolutionMultiplier);
+      }
+      if (rok) {
+        double dx10 = dx[r1][c0];
+        double dy10 = dy[r1][c0];
+        drawline(ret, r0 + dy00, c0 + dx00, r1 + dy10, c0 + dx10, cResolutionMultiplier);
+      }
+    }
+  }
+  return ret;
 }
 
 void save_state(DiffeoFunctionMatching* dfm, const fs::path& folder_path) {
@@ -105,10 +204,12 @@ void save_state(DiffeoFunctionMatching* dfm, const fs::path& folder_path) {
   //#phiy = dm.phiinvy
   //plot_warp(phix, phiy, downsample=4)
 
-  // IMPORTANT NOTE: This is unfinished work!
-  auto warped = combine_warp(dfm->phi_x(), dfm->phi_y());
+  // IMPORTANT NOTE: This is unfinished work! Go through code!
+  double scale_image = 4.0;
+
+  auto warped = combine_warp(dfm->phi_x(), dfm->phi_y(), 64, scale_image);
   save_image(warped, folder_path / "forward_warp.png", EConversion::Linearize_To_0_1_Range, cZeroLimit);
-  warped = combine_warp(dfm->phi_inv_x(), dfm->phi_inv_y());
+  warped = combine_warp(dfm->phi_inv_x(), dfm->phi_inv_y(), 64, scale_image);
   save_image(warped, folder_path / "backward_warp.png", EConversion::Linearize_To_0_1_Range, cZeroLimit);
 
   //plt.axis('equal')
