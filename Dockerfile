@@ -14,10 +14,10 @@ cd vcpkg && ./bootstrap-vcpkg.sh && ./vcpkg install gtest:x64-linux fftw3:x64-li
 
 # copy local files to be built
 COPY scripts/build.sh /app/scripts/build.sh
-COPY scripts/container_cmake.sh /app/scripts/container_cmake.sh
+COPY scripts/docker_cmake.sh /app/scripts/docker_cmake.sh
 COPY src /app/src
 COPY CMakeLists.txt /app
-RUN cd scripts && ./container_cmake.sh
+RUN cd scripts && ./docker_cmake.sh
 
 CMD cd scripts && ./build.sh
 
