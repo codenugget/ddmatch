@@ -156,12 +156,12 @@ dGrid combine_warp(const dGrid& dx, const dGrid& dy, const int cDivider, const d
       if (cok) {
         double dx01 = dx[r0][c1];
         double dy01 = dy[r0][c1];
-        drawline(ret, r0 + dy00, c0 + dx00, r0 + dy01, c1 + dx01, cResolutionMultiplier);
+        drawline(ret, dy00, dx00, dy01, dx01, cResolutionMultiplier);
       }
       if (rok) {
         double dx10 = dx[r1][c0];
         double dy10 = dy[r1][c0];
-        drawline(ret, r0 + dy00, c0 + dx00, r1 + dy10, c0 + dx10, cResolutionMultiplier);
+        drawline(ret, dy00, dx00, dy10, dx10, cResolutionMultiplier);
       }
     }
   }
