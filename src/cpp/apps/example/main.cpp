@@ -141,26 +141,31 @@ dGrid combine_warp(const dGrid& dx, const dGrid& dy, const int cDivider, const d
   // xphi[skip::skip, ::1].T - T is for transpose
   // for now rows/cols are the same
   int skip = cDivider > 0 ? std::max<int>(dx.rows()/cDivider, 1) : 1;
+  auto dx_data = dx.data();
+  auto dy_data = dy.data();
+  double x0 = dx_data[0];
+  double y0 = dy_data[0];
+  //double padd = x0 > 0 ? 1.2*x0 : -1.2*x0;         // assume cols=rows
   dGrid ret(cResolutionMultiplier*dx.rows(), cResolutionMultiplier*dx.cols(), 0.0);
 
   for (int r0 = skip; r0 < dx.rows(); r0 += skip) {
     for (int c0 = skip; c0 < dx.cols(); c0 += skip) {
       int r1 = r0 + skip;
       int c1 = c0 + skip;
-      double dx00 = dx[r0][c0];
-      double dy00 = dy[r0][c0];
+      double dx00 = dx[r0][c0]-x0;
+      double dy00 = dy[r0][c0]-y0;
 
       bool cok = c1 < dx.cols();
       bool rok = r1 < dx.rows();
 
       if (cok) {
-        double dx01 = dx[r0][c1];
-        double dy01 = dy[r0][c1];
+        double dx01 = dx[r0][c1]-x0;
+        double dy01 = dy[r0][c1]-y0;
         drawline(ret, dy00, dx00, dy01, dx01, cResolutionMultiplier);
       }
       if (rok) {
-        double dx10 = dx[r1][c0];
-        double dy10 = dy[r1][c0];
+        double dx10 = dx[r1][c0]-x0;
+        double dy10 = dy[r1][c0]-y0;
         drawline(ret, dy00, dx00, dy10, dx10, cResolutionMultiplier);
       }
     }
