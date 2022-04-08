@@ -1,6 +1,6 @@
 /docker_build/
 /runtime/*
-!/runtime/settings.json
+!/runtime/*.json
 /scripts/build/
 /vcpkg/
 
