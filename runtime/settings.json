@@ -1,0 +1,28 @@
+{
+    "run_1": {
+        "compute_phi": true,
+        "alpha": 0.001,
+        "beta": 0.3,
+        "sigma": 0.0,
+        "iterations": 400,
+        "epsilon": 0.5,
+        "store_every": 80,
+        "description": "something here...",
+        "output": "translation/image",
+        "source": "mysource.png",
+        "target": "mytarget.png"
+    },
+    "run_2": {
+        "compute_phi": true,
+        "alpha": 0.001,
+        "beta": 0.3,
+        "sigma": 0.0,
+        "iterations": 400,
+        "epsilon": 0.5,
+        "store_every": 80,
+        "description": "something more here...",
+        "output": "translation/image2",
+        "source": "mysource2.png",
+        "target": "mytarget2.png"
+    }
+}
