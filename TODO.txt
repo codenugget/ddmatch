@@ -1,30 +1,27 @@
 High:
-[ ] Decide what FFT package to pick.
-[ ] Add new test-app for making a minimal working example with FFT choice.
-[ ] vcpkg integration, note that we might want to be able to use:
-	[ ] Intel MKL (which has a version from 2020 included in vcpkg)
-	[ ] nlohmann / json, https://github.com/nlohmann/json
-[ ] Rewrite the old example app to be more complete... currently it's just a hack.
-	We should have a data-driven way (JSON) to:
-		Opt-in how often we want to dump images, what images to dump etc
-		Read new source/target images.
-		Control solver configuration.
-[ ] Read other images than squares.
-[ ] Read images of other resolutions.
+[ ] Generalize so we can use images of arbitrary width / height
 
 Future:
-[ ] Draw the deformed grid
-[ ] Generalize to arbitrary width / height
-	INVESTIGATE: Might be required to perform a Chirp Z transform
-[ ] gtest: Replace printf() with std::cout to be able to prune the output while running tests?
+[ ] We can improve by controlling app through JSON to
+	Opt-in how often we want to dump images, what images to dump etc
+	Read new source/target images.
+	Control solver configuration.
 [ ] cleanup stage (mostly I've bloated the ImageLib with unused functions)
-[ ] Profiling
+	There exist a lot of commented code blocks from python. Remove it when we are comfortable.
 
 WON'T FIX:
 [x] Wrap vec<vec<double>> to something else for efficiency?
   REASON: already done differently
 [x] Better console output in example app and add some verbosity flag
   REASON: undesired feature anyway
+[x] Add new test-app for making a minimal working example with FFT choice.
+  REASON: we already have FFT in example app
+[x] Profiling
+  REASON: unfocused to have it in list now, we are also discussing to do a GPU implementation instead
+[x] Rewrite the old example app to be more complete... currently it's just a hack.
+  REASON: works for now... create new TODOs instead that are more focused
+[ ] gtest: Replace printf() with std::cout to be able to prune the output while running tests?
+  REASON: unfocused
 
 Done:
 [x] Make it possible to run the simplest example
@@ -48,4 +45,10 @@ Done:
 [x] Add test cases for ZeroPad
 [x] Should I use modules in c++ or not? (probably not at this stage)
 	NO: We do not want to require c++20 at this stage.
+[x] Decide what FFT package to pick.
+[x] vcpkg integration, note that we might want to be able to use:
+	[ ] Intel MKL (which has a version from 2020 included in vcpkg)
+	[ ] nlohmann / json, https://github.com/nlohmann/json
+[x] Draw the deformed grid
+[x] Read other images than squares.
 
