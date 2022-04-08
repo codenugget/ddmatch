@@ -72,8 +72,6 @@ bool image_compose_2d(const dGrid& I, const dGrid& xphi, const dGrid& yphi, dGri
     return false;
   int w = I.cols();
   int h = I.rows();
-  if (w != h) // for now assume width == height
-    return false;
   for(int py = 0; py < h; ++py) {
     for(int px = 0; px < w; ++px) {
       const auto [x0, x1, dx] = periodic_1d(xphi[py][px], w);
@@ -107,8 +105,7 @@ bool eval_diffeo_2d(
     return false;
   int w = xpsi.cols();
   int h = xpsi.rows();
-  if (w != h) // for now assume width == height
-    return false;
+
   // d = xvect.shape[0]
   // TODO: investigate if we need to implement differently when w != h
   int n = (int) xvect.size();
@@ -143,8 +140,6 @@ bool diffeo_compose_2d(
 
   int w = xpsi.cols();
   int h = xpsi.rows();
-  if (w != h) // only allow square sizes now
-    return false;
 
   for(int i = 0; i < h; ++i) {
     for(int j = 0; j < w; ++j) {
@@ -174,8 +169,6 @@ bool diffeo_gradient_y_2d(const dGrid& I, dGrid& dIdx, dGrid& dIdy) {
 
   int w = I.cols();
   int h = I.rows();
-  if (w != h)
-    return false;
 
   for (int j = 0; j < w; ++j) {
     dIdy[  0][j] = (I[1][j] - I[h-1][j] + h)/2.0; // TODO: verify h!
@@ -208,8 +201,6 @@ bool diffeo_gradient_x_2d(const dGrid& I, dGrid& dIdx, dGrid& dIdy) {
 
   int w = I.cols();
   int h = I.rows();
-  if (w != h)
-    return false;
 
   for (int j = 0; j < w; ++j) {
     dIdy[  0][j] = (I[1][j] - I[h-1][j])/2.0;
@@ -234,8 +225,6 @@ bool smoothing(dGrid& v, double& alpha, double& beta) {
   int nrow = v.rows();
   int ncol = v.cols();
   int N = nrow*ncol;
-  if (nrow != ncol)
-    return false;
 
   fftw_complex *in, *out;
   in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (ncol*nrow));
@@ -320,8 +309,7 @@ bool image_gradient_2d(const dGrid& I, dGrid& dIdx, dGrid& dIdy) {
 
   int w = I.cols();
   int h = I.rows();
-  if (w != h)
-    return false;
+
   int im1 = h-1;
   for (int i = 0; i< h-1; im1 = i, ++i) {
     int jm1 = w - 1;
@@ -358,8 +346,6 @@ bool image_gradient_2d_forward(const dGrid& I, dGrid& dIdx, dGrid& dIdy) {
 
   int w = I.cols();
   int h = I.rows();
-  if (w != h)
-    return false;
 
   int im1 = h-1;
   for (int i = 0; i < h-1; ++i) {
@@ -399,8 +385,6 @@ bool divergence_2d(const dGrid& vx, const dGrid& vy, dGrid& divv) {
 
   int w = vx.cols();
   int h = vx.rows();
-  if (w != h)
-    return false;
 
   int im1 = h-1;
   for (int i = 0; i < h-1; ++i) {
@@ -443,8 +427,6 @@ bool jacobian_2d_forward(const dGrid& xphi, const dGrid& yphi, dGrid& jac) {
 
   int w = xphi.cols();
   int h = xphi.rows();
-  if (w != h)
-    return false;
 
   for (int i = 0; i < h-1; ++i) {
     for (int j = 0; j < w-1; ++j) {

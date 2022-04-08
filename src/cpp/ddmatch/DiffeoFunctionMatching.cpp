@@ -8,6 +8,13 @@
 #include "core/MyFftSolver.h"
 #include "core/MyArrays.h"
 
+bool is_power_of_two(const int n) {
+  if (n == 0)
+    return false;
+  double dl2 = log2(n);
+  return ceil(dl2) == floor(dl2);
+}
+
 std::tuple<std::unique_ptr<DiffeoFunctionMatching>, std::string> DiffeoFunctionMatching::create(
     const dGrid& source, const dGrid& target,
     double alpha, double beta, double sigma,
@@ -19,8 +26,8 @@ std::tuple<std::unique_ptr<DiffeoFunctionMatching>, std::string> DiffeoFunctionM
   if (sigma < 0)
     return std::make_tuple(nullptr, "Paramter sigma must be positive");
 
-  if (source.rows() != source.cols())
-    return std::make_tuple(nullptr, "Only square images allowed so far.");
+  if (!is_power_of_two(source.rows()) || !is_power_of_two(source.cols()))
+    return { nullptr, "The image size needs to be a power of 2." };
 
   auto ret = std::unique_ptr<DiffeoFunctionMatching>(new DiffeoFunctionMatching(source, target, alpha, beta, sigma, compute_phi));
   ret->setup();
@@ -245,7 +252,7 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     //m_tmpx -= m_tmpy;
     //elem_func_inplace(m_tmpx, [](double v){ return v*v; });
     const auto diff_sq = [](const double v1, const double v2) {
-      double v = (v1 - v2);
+      const double v = (v1 - v2);
       return v * v;
     };
     elem_set(m_tmpx, m_I, m_target, diff_sq);
@@ -273,6 +280,7 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
 
     //self.image_compose(self.I1, self.phiinvx, self.phiinvy, self.I)
     //image_compose_2d(m_I1, m_phiinvx, m_phiinvy, m_I);
+    // NOTE: should we check return value or not? I think not but just a heads-up in case
     image_compose_2d(m_source, m_phiinvx, m_phiinvy, m_I);
 
     //self.diffeo_gradient_y(self.phiinvy, self.yddx, self.yddy)
@@ -280,14 +288,15 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     diffeo_gradient_y_2d(m_phiinvy, m_yddx, m_yddy);
     diffeo_gradient_x_2d(m_phiinvx, m_xddx, m_xddy);
 
+    // NOTE: Double check that we should square the squared sum. (It seems so but I just don't want to do a silly mistake in the conversion here)
     const auto square_sum = [](const double x, const double y){
-      double v = x*x + y*y;
+      const double v = x*x + y*y;
       return v*v;
     };
     //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
     elem_set(m_h[0][0], m_yddy, m_xddy, square_sum);
     const auto dot_sum = [](const double x, const double y, const double z, const double w){
-      double v = x*y + z*w;
+      const double v = x*y + z*w;
       return v*v;
     };
     //np.copyto(self.h[1,0], self.yddx*self.yddy+self.xddx*self.xddy)
