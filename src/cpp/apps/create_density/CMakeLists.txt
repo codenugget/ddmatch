@@ -10,4 +10,11 @@ set(src
 add_executable(${PROJECT_NAME} ${src})
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json nlohmann_json::nlohmann_json)
+add_dependencies(${PROJECT_NAME}
+    utils
+)
+
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE nlohmann_json nlohmann_json::nlohmann_json
+    PUBLIC utils
+)
