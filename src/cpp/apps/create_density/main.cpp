@@ -83,7 +83,8 @@ bool save_density_map(const dGrid& grid, const std::filesystem::path& filename) 
 
 std::tuple<dGrid, dGrid> create_density_maps(const config& cfg)
 {
-  std::mt19937_64 gen(cfg.seed_);
+  std::random_device rd;
+  std::mt19937_64 gen = cfg.seed_ != 0 ? std::mt19937_64(cfg.seed_) : std::mt19937_64(rd());
 
   std::cout << "Creating source and target density maps with resolution: " << cfg.resolution_[0] <<", " << cfg.resolution_[1] << "\n";
 
