@@ -13,56 +13,19 @@
 
 #include "ddmatch/DiffeoFunctionMatching.h"
 
+#include "utils/to_file.h"
+
 using ImageLib::TImage;
 
 namespace fs = std::filesystem;
 
-enum class EConversion {
-  Unmodified,
-  Linearize_To_0_1_Range
-};
-
-
-std::unique_ptr<ImageLib::Image> convert_image(const dGrid& grid, const EConversion mode, const double zero_limit) {
-  int w = grid.cols();
-  int h = grid.rows();
-
-  double dMinVal = DBL_MAX;
-  double dMaxVal = -DBL_MAX;
-  if (mode == EConversion::Linearize_To_0_1_Range) {
-    for(int y = 0; y < h; ++y) {
-      for(int x = 0; x < w; ++x) {
-        dMinVal = std::min<double>(dMinVal, grid[y][x]);
-        dMaxVal = std::max<double>(dMaxVal, grid[y][x]);
-      }
-    }
-  }
-  //std::cout << "(min, max) : (" << dMinVal << ", " << dMaxVal << ")   grid: " << grid.rows() << ", " << grid.cols() << "\n";
-  const double cRange = dMaxVal - dMinVal;
-  const bool cIsDifferenceZero = cRange < zero_limit;
-  const double cInvRange = cIsDifferenceZero ? 1.0 : 1.0 / cRange;
-
-  std::unique_ptr<ImageLib::Image> ret = std::make_unique<ImageLib::Image>(w, h, 1);
-  uint8_t* dst = ret->data();
-  for(int y = 0; y < h; ++y) {
-    for(int x = 0; x < w; ++x) {
-      double value = grid[y][x];
-      if (mode == EConversion::Linearize_To_0_1_Range)
-        value = (value - dMinVal) * cInvRange;
-      int c = static_cast<int>(std::round(value * 255.0));
-      c = std::min(std::max(c, 0), 255);
-      dst[y*w+x] = static_cast<uint8_t>(c & 0xff);
-    }
-  }
-  return ret;
-}
-
-bool save_image(const dGrid& grid, const fs::path& filename, const EConversion mode, const double zero_limit) {
-  std::cout << filename << "\n";
-  auto img = convert_image(grid, mode, zero_limit);
+bool save_image(const dGrid& grid, const std::filesystem::path& filename) {
+  const double cZeroLimit = 1e-3;
+  std::cout << "Saving: " << filename << "\n";
+  auto img = utils::to_image(grid, utils::EConversion::Linearize_To_0_1_Range, cZeroLimit);
   const auto [ok, msg] = ImageLib::save(img.get(), filename.string());
   if (!ok)
-    printf("ERROR: %s\n", msg.c_str());
+    std::cerr << "ERROR: " << msg.c_str() << "\n";
   return ok;
 }
 
@@ -186,19 +149,19 @@ void save_state(DiffeoFunctionMatching* dfm, const fs::path& folder_path) {
   //plt.imshow(dm.target, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
   //plt.colorbar()
   //plt.title('Target image')
-  save_image(dfm->target(), folder_path / "target.png", EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  save_image(dfm->target(), folder_path / "target.png");
 
   //plt.subplot(2,2,2)
   //plt.imshow(dm.source, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
   //plt.colorbar()
   //plt.title('Template image')
-  save_image(dfm->source(), folder_path / "template.png", EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  save_image(dfm->source(), folder_path / "template.png");
 
   //plt.subplot(2,2,3)
   //plt.imshow(dm.I, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
   //plt.colorbar()
   //plt.title('Warped image')
-  save_image(dfm->warped(), folder_path / "warped.png", EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  save_image(dfm->warped(), folder_path / "warped.png");
 
   //plt.subplot(2,2,4)
   //# Forward warp    
@@ -213,9 +176,9 @@ void save_state(DiffeoFunctionMatching* dfm, const fs::path& folder_path) {
   double scale_image = 4.0;
 
   auto warped = combine_warp(dfm->phi_x(), dfm->phi_y(), 64, scale_image);
-  save_image(warped, folder_path / "forward_warp.png", EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  save_image(warped, folder_path / "forward_warp.png");
   warped = combine_warp(dfm->phi_inv_x(), dfm->phi_inv_y(), 64, scale_image);
-  save_image(warped, folder_path / "backward_warp.png", EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  save_image(warped, folder_path / "backward_warp.png");
 
   //plt.axis('equal')
   //warplim = [phix.min(), phix.max(), phiy.min(), phiy.max()]
