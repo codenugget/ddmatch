@@ -126,9 +126,8 @@ std::tuple<bool, config, std::string> load_json_config(const char* filename) {
     return { true, parse_config(in_js), "" };
   }
   catch (std::exception ex) {
-    return { false, {}, ex.what() };
+    return { false, {}, std::string("load_json_config: ERROR: ") + ex.what() };
   }
-  return { false, {}, "not implemented!"};
 }
 
 int main(int argc, char** argv)

@@ -1,6 +1,8 @@
 project (utils)
 
 set(src
+  to_grid.cpp
+  to_grid.h
   to_image.cpp
   to_image.h
 )

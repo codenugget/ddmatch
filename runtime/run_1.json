@@ -8,9 +8,9 @@
         "epsilon": 0.5,
         "store_every": 80,
         "description": "something here...",
-        "output": "translation/image",
-        "source": "mysource.png",
-        "target": "mytarget.png"
+        "output_folder": "translation/density",
+        "source_image": "source_density.png",
+        "target_image": "target_density.png"
     },
     "run_2": {
         "compute_phi": true,
@@ -21,8 +21,8 @@
         "epsilon": 0.5,
         "store_every": 80,
         "description": "something more here...",
-        "output": "translation/image2",
-        "source": "mysource2.png",
-        "target": "mytarget2.png"
+        "output_folder": "translation/skew",
+        "source_image": "source_skew.png",
+        "target_image": "target_skew.png"
     }
 }
