@@ -22,14 +22,6 @@
 
 using ImageLib::TImage;
 
-bool save_grid(const dGrid& grid, const std::filesystem::path& filename) {
-  std::cout << "Saving density map to: " << filename << "\n";
-  const auto[ok, msg] = utils::save(grid, filename, utils::EConversion::Linearize_To_0_1_Range, 1e-3);
-  if (!ok)
-    std::cerr << msg << "\n";
-  return ok;
-}
-
 struct config {
   int seed_ = 0;
   int num_points_ = 0;
@@ -79,6 +71,14 @@ bool config::verbose_validation() const {
     return false;
   }
   return true;
+}
+
+bool save_density_map(const dGrid& grid, const std::filesystem::path& filename) {
+  std::cout << "Saving density map to: " << filename << "\n";
+  const auto[ok, msg] = utils::save(grid, filename, utils::EConversion::Linearize_To_0_1_Range, 1e-3);
+  if (!ok)
+    std::cerr << msg << "\n";
+  return ok;
 }
 
 std::tuple<dGrid, dGrid> create_density_maps(const config& cfg)
@@ -150,7 +150,7 @@ int main(int argc, char** argv)
 
   const auto [src, tgt] = create_density_maps(cfg);
 
-  save_grid(src, cfg.source_);
-  save_grid(tgt, cfg.target_);
+  save_density_map(src, cfg.source_);
+  save_density_map(tgt, cfg.target_);
   exit(0);
 }
