@@ -1,0 +1,9 @@
+{
+    "p0": [5, 5],
+    "nPoints": [25, 25],
+    "offset": [20, 20],
+    "value": 1.0,
+    "resolution": [128, 128],
+    "source": "source_skew.png",
+    "target": "target_skew.png"
+}

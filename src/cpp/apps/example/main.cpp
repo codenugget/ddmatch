@@ -25,7 +25,7 @@ bool save_image(const dGrid& grid, const std::filesystem::path& filename) {
   auto img = utils::to_image(grid, utils::EConversion::Linearize_To_0_1_Range, cZeroLimit);
   const auto [ok, msg] = ImageLib::save(img.get(), filename.string());
   if (!ok)
-    std::cerr << "ERROR: " << msg.c_str() << "\n";
+    std::cerr << "ERROR: " << msg << "\n";
   return ok;
 }
 

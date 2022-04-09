@@ -1,4 +1,5 @@
 add_subdirectory(create_density)
+add_subdirectory(create_skew)
 add_subdirectory(example)
 add_subdirectory(fft)
 add_subdirectory(plt)
