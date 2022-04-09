@@ -12,8 +12,8 @@ if [ ! -d ../vcpkg ]; then
   git clone https://github.com/Microsoft/vcpkg.git --depth 1
   cd vcpkg
   ./bootstrap-vcpkg.sh
-  ./vcpkg install gtest:x64-linux fftw3:x64-linux matplotplusplus:x64-linux nlohmann-json:x64-linux
   popd
+  ./vcpkg_install_libraries.sh
 fi
 
 if [ ! -d build ]; then
