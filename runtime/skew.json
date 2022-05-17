@@ -3,7 +3,7 @@
     "nPoints": [25, 25],
     "offset": [13, 13],
     "value": 1.0,
-    "resolution": [128, 128],
+    "resolution": [128, 256],
     "source": "source_skew.png",
     "target": "target_skew.png"
 }
