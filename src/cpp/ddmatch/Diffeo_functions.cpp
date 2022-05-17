@@ -247,8 +247,8 @@ bool smoothing(dGrid& v, double& alpha, double& beta) {
     return ret;
   };
   // Why create as int and then convert to double instead of create as double?
-  auto v1 = to_double(MyKvector<int>(0, ncol, nrow));  //outputs (0,1,...,127,-128,-127,...,-1)
-  auto v2 = to_double(MyKvector<int>(0, nrow, ncol));
+  auto v1 = to_double(MyKvector<int>(0, ncol, ncol));  //outputs (0,1,...,127,-128,-127,...,-1)
+  auto v2 = to_double(MyKvector<int>(0, nrow, nrow));
 
   dGrid Kx, Ky;
   std::tie(Kx, Ky) = MyMeshGrid(v1, v2, Indexing::ij);

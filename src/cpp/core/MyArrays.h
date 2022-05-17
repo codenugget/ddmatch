@@ -527,21 +527,20 @@ std::vector<T> MyKvector(T start, T stop, int num) {
   // This does not include the endpoint. If num=10 then the output has 10 elements, starting at 0.
   // TODO This assumes that T.rows()=num, so it is not general..
   double step = 0;
-  int numplus = num+1;
+  int numplus = num + 1;
   if (num%2==0) { // true = num is even
-    step = double(stop - start) / num;  // This should be an integer
+    step = double(stop - start) / num;
     for (int i = 0; i < num/2; ++i)
       ret[i] = start + i * step;
-    for (int i = num/2; i < numplus; ++i)
-      ret[i] = -stop + i * step;
+    for (int i = num/2; i < num; ++i)
+      ret[i] = -stop + (i+1) * step;
   }
   else { // num is odd
-    int numminus = num-1;
     step = double(stop - start) / num;
-    for (int i = 0; i < numminus/2; ++i)
+    for (int i = 0; i < numplus/2; ++i)
       ret[i] = start + i * step;
-    for (int i = numminus/2; i < numplus; ++i)
-      ret[i] = -stop + i * step + 1;
+    for (int i = numplus/2; i < num; ++i)
+      ret[i] = -stop + (i+1) * step;
   }
   return ret;
 }
