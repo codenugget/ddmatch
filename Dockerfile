@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y git gcc-10 g++-10 cmake zip pkg-config 
 WORKDIR /app
 # the following two lines will build in vcpkg and the library dependencies we have... optional
 RUN git clone https://github.com/Microsoft/vcpkg.git --depth 1 && \
-cd vcpkg && ./bootstrap-vcpkg.sh && ./vcpkg install gtest:x64-linux fftw3:x64-linux matplotplusplus:x64-linux nlohmann-json:x64-linux
+cd vcpkg && ./bootstrap-vcpkg.sh && ./vcpkg install gtest:x64-linux fftw3:x64-linux matplotplusplus:x64-linux nlohmann-json:x64-linux cuda:x64-linux
 
 # copy local files to be built
 COPY scripts/build.sh /app/scripts/build.sh

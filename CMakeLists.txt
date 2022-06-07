@@ -7,7 +7,7 @@ if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg)
 		"git clone https://github.com/Microsoft/vcpkg.git --depth 1\n"
 		"cd vcpkg\n"
 		"./bootstrap-vcpkg.sh"
-		"./vcpkg install gtest:x64-linux fftw3:x64-linux"
+		"./vcpkg install gtest:x64-linux fftw3:x64-linux cuda:x64-linux"
 		)
 endif()
 
@@ -31,6 +31,7 @@ project(ddmatch)
 find_package(GTest CONFIG REQUIRED)
 find_package(FFTW3 CONFIG REQUIRED)
 find_package(matplot++ CONFIG REQUIRED)
+find_package(CUDA)
 
 include_directories(
 	"src/cpp"
