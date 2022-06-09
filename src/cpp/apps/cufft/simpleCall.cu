@@ -1,5 +1,5 @@
 #include <stdio.h>
-
+#include <utils/helper_cuda.h>
 
 __device__ int addem( int a, int b ) {
     return a + b;
