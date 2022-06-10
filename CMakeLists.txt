@@ -31,7 +31,7 @@ project(ddmatch)
 find_package(GTest CONFIG REQUIRED)
 find_package(FFTW3 CONFIG REQUIRED)
 find_package(matplot++ CONFIG REQUIRED)
-find_package(CUDA)
+find_package(CUDAToolkit)
 
 include_directories(
 	"src/cpp"
@@ -41,5 +41,7 @@ include_directories(
 link_directories(
 	"vcpkg/installed/x64-linux/lib"
 )
+
+enable_language(CUDA)
 
 add_subdirectory(src)
