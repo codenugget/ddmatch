@@ -5,10 +5,10 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 set(src
-    add_loop_gpu.cu
+    simpleCUFFT.cu
 )
 
-add_executable(${PROJECT_NAME} add_loop_gpu.cu)
+add_executable(${PROJECT_NAME} simpleCUFFT.cu)
 
 target_include_directories(
   ${PROJECT_NAME}
@@ -22,4 +22,7 @@ add_dependencies(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
     utils
+    CUDA::cudart 
+    CUDA::cufft
+    CUDA::culibos
 )
