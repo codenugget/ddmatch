@@ -5,10 +5,10 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 set(src
-    vectorAdd.cu
+    add_loop_gpu.cu
 )
 
-add_executable(${PROJECT_NAME} vectorAdd.cu)
+add_executable(${PROJECT_NAME} add_loop_gpu.cu)
 
 target_include_directories(
   ${PROJECT_NAME}
