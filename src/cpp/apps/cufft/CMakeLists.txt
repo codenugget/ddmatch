@@ -5,10 +5,10 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 set(src
-    simpleCUFFT.cu
+    helloCUFFT.cu
 )
 
-add_executable(${PROJECT_NAME} simpleCUFFT.cu)
+add_executable(${PROJECT_NAME} helloCUFFT.cu)
 
 target_include_directories(
   ${PROJECT_NAME}
