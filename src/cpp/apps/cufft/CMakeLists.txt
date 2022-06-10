@@ -12,10 +12,7 @@ add_executable(${PROJECT_NAME} vectorAdd.cu)
 
 target_include_directories(
   ${PROJECT_NAME}
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../Common # Load before CTK
-          ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-
-#CUDA_ADD_EXECUTABLE(${PROJECT_NAME} ${src})
+  PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
