@@ -10,7 +10,7 @@
 
 namespace ImageLib
 {
-  std::unique_ptr<Image> load(const std::string& filename, bool flip_vertical = false) {
+  inline std::unique_ptr<Image> load(const std::string& filename, bool flip_vertical = false) {
     int w, h, nc;
     unsigned char* data = stbi_load(filename.c_str(), &w, &h, &nc, 0);
     if (!data)
