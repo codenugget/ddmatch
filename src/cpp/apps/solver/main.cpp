@@ -6,6 +6,7 @@
 #include <string>
 #include <tuple>
 
+#include <argparse/argparse.hpp>
 #include <nlohmann/json.hpp>
 
 #include "core/MyArrays.h"
@@ -25,7 +26,7 @@ using ImageLib::TImage;
 
 namespace fs = std::filesystem;
 
-struct config_run {
+struct ConfigRun {
   std::string name_; // "run_1", "run_2".. etc
   bool compute_phi_ = true; // TODO: set proper default values
   double alpha_ = 0.001;
@@ -41,8 +42,8 @@ struct config_run {
   bool verbose_validation() const { return true; } // TODO: implement when necessary (i.e. check filenames)
 };
 
-struct config {
-  std::vector<config_run> runs_;
+struct ConfigSolver {
+  std::vector<ConfigRun> runs_;
   bool verbose_validation() const {
     for (const auto& cr : runs_)
       if (!cr.verbose_validation())
@@ -51,7 +52,7 @@ struct config {
   }
 };
 
-std::tuple<bool, dGrid, dGrid, std::string> load_density_maps(const config_run& cfg)
+std::tuple<bool, dGrid, dGrid, std::string> load_density_maps(const ConfigRun& cfg)
 {
   auto Isrc = ImageLib::load(cfg.source_image_);
   auto Itgt = ImageLib::load(cfg.target_image_);
@@ -69,39 +70,41 @@ std::tuple<bool, dGrid, dGrid, std::string> load_density_maps(const config_run& 
   return { true, I0, I1, "" };
 }
 
-
-
-
-inline bool parse_config_run(const std::string& name, const nlohmann::json& j, config_run& cfg) {
+inline bool parse_config_run(const std::string& name, const nlohmann::json& j, ConfigRun& cfg) {
   cfg.name_ = name;
   utils::parse_optional(j, cfg.compute_phi_, "compute_phi");
   utils::parse_optional(j, cfg.alpha_, "alpha");
   utils::parse_optional(j, cfg.beta_, "beta");
   utils::parse_optional(j, cfg.sigma_, "sigma");
-  cfg.iterations_ = j["iterations"];
+  if (!utils::parse_required(j, cfg.iterations_, "iterations"))
+    return false;
   utils::parse_optional(j, cfg.epsilon_, "epsilon");
   utils::parse_optional(j, cfg.store_every_, "store_every");
   utils::parse_optional(j, cfg.description_, "description");
-  cfg.output_folder_ = j["output_folder"];
-  cfg.source_image_ = j["source_image"];
-  cfg.target_image_ = j["target_image"];
+  if (!utils::parse_required(j, cfg.output_folder_, "output_folder"))
+    return false;
+  if (!utils::parse_required(j, cfg.source_image_, "source_image"))
+    return false;
+  if (!utils::parse_required(j, cfg.target_image_, "target_image"))
+    return false;
   return true;
 }
 
-inline config parse_config(const nlohmann::json& in_js) {
+inline std::tuple<bool, ConfigSolver> parse_config(const nlohmann::json& in_js) {
   using nlohmann::json;
-  config cfg;
+  ConfigSolver cfg;
   for (auto it = in_js.begin(); it != in_js.end(); ++it) {
-    config_run cr;
+    ConfigRun cr;
     //from_json(it.value(), ret);
-    if (parse_config_run(it.key(), it.value(), cr))
-      cfg.runs_.push_back(cr);
+    if (!parse_config_run(it.key(), it.value(), cr))
+      return {false, {}};
+    cfg.runs_.push_back(cr);
     //std::cout << it.key() << " : " << it.value() << "\n";
   }
-  return cfg;
+  return {true, cfg};
 }
 
-std::tuple<bool, config, std::string> load_json_config(const char* filename) {
+std::tuple<bool, ConfigSolver, std::string> load_json_config(const char* filename) {
   using nlohmann::json;
   try {
     std::ifstream fp(filename);
@@ -109,7 +112,8 @@ std::tuple<bool, config, std::string> load_json_config(const char* filename) {
       return { false, {}, "Unable to open file \"" + std::string(filename) + "\"" };
     json in_js;
     fp >> in_js;
-    return { true, parse_config(in_js), "" };
+    const auto [ret, cfg] = parse_config(in_js);
+    return { ret, cfg, ret ? "" : ("Failed to load \"" + std::string(filename) + "\"") };
   }
   catch (std::exception ex) {
     return { false, {}, std::string("load_json_config: ERROR: ") + ex.what() };
@@ -126,20 +130,6 @@ bool save_image(const dGrid& grid, const std::filesystem::path& filename) {
     std::cerr << "ERROR: " << msg << "\n";
   return ok;
 }
-
-/*
-# Function definitions
-def plot_warp(xphi, yphi, downsample='auto', **kwarg):
-  """Borrowed from ../difforma_base_example.ipynb."""
-  if (downsample == 'auto'):
-    skip = np.max([xphi.shape[0]/32,1])
-  elif (downsample == 'no'):
-    skip = 1
-  else:
-    skip = downsample
-  plt.plot(xphi[:,skip::skip],yphi[:,skip::skip],'black',\
-           xphi[skip::skip,::1].T,yphi[skip::skip,::1].T,'black', **kwarg)
-*/
 
 void drawline(dGrid& target, double r0, double c0, double r1, double c1, double scale) {
   // bresenham below
@@ -235,92 +225,23 @@ dGrid combine_warp(const dGrid& dx, const dGrid& dy, const int cDivider, const d
 }
 
 void save_state(DiffeoFunctionMatching* dfm, const fs::path& folder_path) {
-  // IMPORTANT NOTE: define what range we regard to be "almost 0" (cZeroLimit)
+  // NOTE: define what range we regard to be "almost 0" (cZeroLimit)
   const double cZeroLimit = 1e-3;
   fs::create_directories(folder_path);
 
-  //# 2x2 overview plot
-  //plt1 = plt.figure(1, figsize=(11.7,9))
-  //plt.clf()
-
-  //plt.subplot(2,2,1)
-  //plt.imshow(dm.target, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
-  //plt.colorbar()
-  //plt.title('Target image')
   save_image(dfm->target(), folder_path / "target.png");
-
-  //plt.subplot(2,2,2)
-  //plt.imshow(dm.source, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
-  //plt.colorbar()
-  //plt.title('Template image')
   save_image(dfm->source(), folder_path / "template.png");
-
-  //plt.subplot(2,2,3)
-  //plt.imshow(dm.I, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
-  //plt.colorbar()
-  //plt.title('Warped image')
   save_image(dfm->warped(), folder_path / "warped.png");
 
-  //plt.subplot(2,2,4)
-  //# Forward warp    
-  //phix = dm.phix
-  //phiy = dm.phiy
-  //# Uncomment for backward warp
-  //#phix = dm.phiinvx
-  //#phiy = dm.phiinvy
-  //plot_warp(phix, phiy, downsample=4)
-
-  // IMPORTANT NOTE: This is unfinished work! Go through code!
   double scale_image = 4.0;
 
   auto warped = combine_warp(dfm->phi_x(), dfm->phi_y(), 64, scale_image);
   save_image(warped, folder_path / "forward_warp.png");
   warped = combine_warp(dfm->phi_inv_x(), dfm->phi_inv_y(), 64, scale_image);
   save_image(warped, folder_path / "backward_warp.png");
-
-  //plt.axis('equal')
-  //warplim = [phix.min(), phix.max(), phiy.min(), phiy.max()]
-  //warplim[0] = min(warplim[0], warplim[2])
-  //warplim[2] = warplim[0]
-  //warplim[1] = max(warplim[1], warplim[3])
-  //warplim[3] = warplim[1]
-
-  //plt.axis(warplim)
-  //plt.gca().invert_yaxis()
-  //plt.gca().set_aspect('equal')
-  //plt.title('Warp')
-  //plt.grid()
-  //plt1.savefig(path.join(subpath, 'overview.png'), dpi=300, bbox_inches='tight')
-
-  //# Energy convergence plot
-  //plt2 = plt.figure(2, figsize=(8,4.5))
-  //plt.clf()
-  //plt.plot(dm.E)
-  //plt.grid()
-  //plt.ylabel('Energy')
-  //plt2.savefig(os.path.join(subpath, 'convergence.png'), dpi=150, bbox_inches='tight')
-
-  //# Dedicated warp plot (forward only)
-  //plt3 = plt.figure(3, figsize=(10,10))
-  //plt.clf()
-  //plot_warp(phix, phiy, downsample=4, )
-  //plt.axis('equal')
-  //warplim = [phix.min(), phix.max(), phiy.min(), phiy.max()]
-  //warplim[0] = min(warplim[0], warplim[2])
-  //warplim[2] = warplim[0]
-  //warplim[1] = max(warplim[1], warplim[3])
-  //warplim[3] = warplim[1]
-
-  //plt.axis(warplim)
-  //plt.gca().invert_yaxis()
-  //plt.gca().set_aspect('equal')
-  //plt.title('Warp')
-  //plt.axis('off')
-  //#plt.grid(color='black')
-  //plt3.savefig(path.join(subpath, 'warp.png'), dpi=150, bbox_inches='tight')
 }
 
-void run_and_save_example(const dGrid& I0, const dGrid& I1, config_run& cfg)
+void run_and_save_example(const dGrid& I0, const dGrid& I1, ConfigRun& cfg)
 {
   std::cout << "Initializing: " << cfg.output_folder_ << "\n";
 
@@ -360,120 +281,9 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_run& cfg)
   printf("%s: Creating plots\n", overview_path.string().c_str());
 
   save_state(dfm.get(), overview_path);
-  
-  //# Output description
-  //with open(path.join(subpath, 'description.txt'), 'w') as f:
-  //  f.write(subpath)
-  //  f.write('\n')
-  //  f.write(description)
-  //  
-  //print('Done at ' + time.asctime() + '\n')
 }
 
-
-/*
-def run_and_save_example(I0, I1, subpath, description):
-  """Utility function to run and export results for a test case."""
-  print('"%s": Initializing' % subpath)
-  dm = difforma_base.DiffeoFunctionMatching(
-    source=I0, target=I1,
-    alpha=0.001, beta=0.03, sigma=0.05
-  )
-  print('"%s": Running' % subpath)
-  dm.run(1000, epsilon=0.1)
-  
-  print('"%s": Creating plots' % subpath)
-  if not path.exists(subpath):
-    os.makedirs(subpath)
-  
-  # 2x2 overview plot
-  plt1 = plt.figure(1, figsize=(11.7,9))
-  plt.clf()
-
-  plt.subplot(2,2,1)
-  plt.imshow(dm.target, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
-  plt.colorbar()
-  plt.title('Target image')
-
-  plt.subplot(2,2,2)
-  plt.imshow(dm.source, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
-  plt.colorbar()
-  plt.title('Template image')
-
-  plt.subplot(2,2,3)
-  plt.imshow(dm.I, cmap='bone', vmin=dm.I0.min(), vmax=dm.I0.max())
-  plt.colorbar()
-  plt.title('Warped image')
-
-  plt.subplot(2,2,4)
-  # Forward warp    
-  phix = dm.phix
-  phiy = dm.phiy
-  # Uncomment for backward warp
-  #phix = dm.phiinvx
-  #phiy = dm.phiinvy
-  plot_warp(phix, phiy, downsample=4)
-  plt.axis('equal')
-  warplim = [phix.min(), phix.max(), phiy.min(), phiy.max()]
-  warplim[0] = min(warplim[0], warplim[2])
-  warplim[2] = warplim[0]
-  warplim[1] = max(warplim[1], warplim[3])
-  warplim[3] = warplim[1]
-
-  plt.axis(warplim)
-  plt.gca().invert_yaxis()
-  plt.gca().set_aspect('equal')
-  plt.title('Warp')
-  plt.grid()
-  plt1.savefig(path.join(subpath, 'overview.png'), dpi=300, bbox_inches='tight')
-
-  # Energy convergence plot
-  plt2 = plt.figure(2, figsize=(8,4.5))
-  plt.clf()
-  plt.plot(dm.E)
-  plt.grid()
-  plt.ylabel('Energy')
-  plt2.savefig(os.path.join(subpath, 'convergence.png'), dpi=150, bbox_inches='tight')
-
-  # Dedicated warp plot (forward only)
-  plt3 = plt.figure(3, figsize=(10,10))
-  plt.clf()
-  plot_warp(phix, phiy, downsample=4, )
-  plt.axis('equal')
-  warplim = [phix.min(), phix.max(), phiy.min(), phiy.max()]
-  warplim[0] = min(warplim[0], warplim[2])
-  warplim[2] = warplim[0]
-  warplim[1] = max(warplim[1], warplim[3])
-  warplim[3] = warplim[1]
-
-  plt.axis(warplim)
-  plt.gca().invert_yaxis()
-  plt.gca().set_aspect('equal')
-  plt.title('Warp')
-  plt.axis('off')
-  #plt.grid(color='black')
-  plt3.savefig(path.join(subpath, 'warp.png'), dpi=150, bbox_inches='tight')
-  
-  # Output description
-  with open(path.join(subpath, 'description.txt'), 'w') as f:
-    f.write(subpath)
-    f.write('\n')
-    f.write(description)
-    
-  print('Done at ' + time.asctime() + '\n')
-*/
-
-/*dGrid create(Vec2i size, Vec2i r0, Vec2i r1, double value) {
-  dGrid ret(size[0], size[1], 0.0);
-  for (int i = r0[1]; i < r1[1]; ++i) {
-    for (int j = r0[0]; j < r1[0]; ++j) {
-      ret[i][j] = value;
-    }
-  }
-  return ret;
-}*/
-
-void run_solver(config_run& cfg) {
+void run_solver(ConfigRun& cfg) {
   const auto [ok, I0, I1, msg] = load_density_maps(cfg);
 
   if (!msg.empty())
@@ -484,102 +294,188 @@ void run_solver(config_run& cfg) {
   run_and_save_example(I0, I1, cfg);
 }
 
-void run_solver(config& cfg) {
-  /*std::string description =
-    "Translations ought to be exactly achievable even with periodic\n"
-    "boundary conditions. This test verifies that presumption.\n\n"
-    "It seems that images that are non-smooth on the pixel level causes divergence.\n"
-    "Some binary \"smoothing\" method may be employed. Instead of single pixels,\n"
-    "small squares or circles could be used.";*/
+void run_solver(ConfigSolver& cfg) {
   for (auto& r : cfg.runs_) {
     run_solver(r);
   }
 }
 
-int main(int argc, char** argv)
-{
-  if (argc != 2) {
-    std::cout << "Usage: solver solver_json_file\n";
-    exit(1);
-  }
 
-  const char* json_filename = argv[1];
-  auto [ok, cfg, message] = load_json_config(json_filename);
-  if (!message.empty())
-    std::cout << message << "\n";
+// NOTE: default values are set to fit one example run
+struct SkewConfig {
+  Vec2i p0_ = Vec2i{10,10};
+  Vec2i nPoints_ = Vec2i{25,25};
+  Vec2i offset_ = Vec2i{13,13};
+  Vec2i resolution_ = Vec2i{128,128};
+  double value_ = 1.0;
+};
+
+bool save_density_map(const dGrid& grid, const std::filesystem::path& filename) {
+  //std::cout << "Saving density map to: " << filename << "\n";
+  const auto[ok, msg] = utils::save(grid, filename, utils::EConversion::Linearize_To_0_1_Range, 1e-3);
   if (!ok)
-    exit(1);
-
-  if (!cfg.verbose_validation())
-    exit(1);
-
-  run_solver(cfg);
-  exit(0);
+    std::cerr << msg << "\n";
+  return ok;
 }
 
-/*
-def test1():
-  description = '''
-Translations ought to be exactly achievable even with periodic
-boundary conditions. This test verifies that presumption.
+std::tuple<dGrid, dGrid> create_skew_maps(const SkewConfig& cfg) {
+  dGrid I0(cfg.resolution_[0], cfg.resolution_[1], 0.0);
+  dGrid I1(cfg.resolution_[0], cfg.resolution_[1], 0.0);
 
-It seems that images that are non-smooth on the pixel level causes
-divergence. Some binary "smoothing" method may be employed. Instead
-of single pixels, small squares or circles could be used.
-'''
-  nPoints = 30
-  delta = 20
-  I0 = np.zeros((64,64))
-  I1 = I0 + 0
-  for i in range(nPoints):
-    px = randint(5,25)
-    py = randint(5,25)
-    I0[px,py] = 1
-    I1[px+delta,py+delta] = 1
+  for (int row = cfg.p0_[0]; row < cfg.p0_[0]+cfg.nPoints_[0]; ++row) {
+    for (int col = cfg.p0_[1]; col < cfg.p0_[1]+cfg.nPoints_[1]; ++col) {
+      I0[row][col] = cfg.value_;
+      I1[row + cfg.offset_[0]][row + col + cfg.offset_[1]] = cfg.value_;
+    }
+  }
+  return { I0, I1 };
+}
 
-  subpath = path.join('translation', 'low_density')
-  run_and_save_example(I0, I1, subpath, description)
-  
-  subpath = path.join('translation', 'low_density_smoothed')
-  I2 = ndimage.gaussian_filter(I0, sigma=1)
-  I3 = ndimage.gaussian_filter(I1, sigma=1)
-  run_and_save_example(I2, I3, subpath, description)
+void generate_skew(std::string json_filename, std::string source_filename, std::string target_filename) {
+  SkewConfig cfg;
+  const auto [src, tgt] = create_skew_maps(cfg);
+  save_density_map(src, source_filename);
+  save_density_map(tgt, target_filename);
 
-  subpath = path.join('translation', 'medium_density')
-  nPoints = 200
-  for i in range(nPoints):
-    px = randint(5,25)
-    py = randint(5,25)
-    I0[px,py] = 1
-    I1[px+delta,py+delta] = 1
-  run_and_save_example(I0, I1, subpath, description)
+  // create an example json output file
+  nlohmann::json j_skew = {
+    {"compute_phi", true},
+    {"alpha", 0.001},
+    {"beta", 0.3},
+    {"sigma", 0.0},
+    {"iterations", 400},
+    {"epsilon", 0.5},
+    {"store_every", 80},
+    {"description", "something here..."},
+    {"output_folder", "translation/density"},
+    {"source_image", source_filename},
+    {"target_image", target_filename}
+  };
+  nlohmann::json j_run = {
+    {"run_skew", j_skew}
+  };
 
-  subpath = path.join('translation', 'medium_density_smoothed')
-  I2 = ndimage.gaussian_filter(I0, sigma=1)
-  I3 = ndimage.gaussian_filter(I1, sigma=1)
-  run_and_save_example(I2, I3, subpath, description)
-  
-  subpath = path.join('translation', 'high_density')
-  nPoints = 400
-  for i in range(nPoints):
-    px = randint(5,25)
-    py = randint(5,25)
-    I0[px,py] = 1
-    I1[px+delta,py+delta] = 1
-  run_and_save_example(I0, I1, subpath, description)
-  
-  subpath = path.join('translation', 'high_density_smoothed')
-  I2 = ndimage.gaussian_filter(I0, sigma=1)
-  I3 = ndimage.gaussian_filter(I1, sigma=1)
-  run_and_save_example(I2, I3, subpath, description)
+  // NOTE: std::setw makes the output add spaces to be more human readable
+  std::ofstream fp(json_filename);
+  if (fp)
+    fp << std::setw(4) << j_run;
+}
 
-  subpath = path.join('translation', 'full_density')
-  I0[5:26,5:26] = 1
-  I1[(5+delta):(26+delta),(5+delta):(26+delta)] = 1
-  run_and_save_example(I0, I1, subpath, description)
-  
-  subpath = path.join('translation', 'full_density_smoothed')
-  I2 = ndimage.gaussian_filter(I0, sigma=1)
-  I3 = ndimage.gaussian_filter(I1, sigma=1)
-  run_and_save_example(I2, I3, subpath, description)
-*/
+// NOTE: default values are set to fit one example run
+struct ConfigDensity {
+  int seed_ = 0;
+  int num_points_ = 400;
+  Vec2i p0_ = Vec2i{5,5};
+  Vec2i p1_ = Vec2i{25,25};
+  Vec2i offset_ = Vec2i{20,20};
+  Vec2i resolution_ = Vec2i{128,128};
+  double value_ = 1.0;
+};
+
+std::tuple<dGrid, dGrid> create_density_maps(const ConfigDensity& cfg)
+{
+  std::random_device rd;
+  std::mt19937_64 gen = cfg.seed_ != 0 ? std::mt19937_64(cfg.seed_) : std::mt19937_64(rd());
+
+  dGrid I0(cfg.resolution_[0], cfg.resolution_[1], 0.0);
+  dGrid I1(cfg.resolution_[0], cfg.resolution_[1], 0.0);
+  std::uniform_int_distribution dis_x(cfg.p0_[0], cfg.p1_[0]);
+  std::uniform_int_distribution dis_y(cfg.p0_[1], cfg.p1_[1]);
+
+  for (int i = 0; i < cfg.num_points_; ++i) {
+    int c = dis_x(gen);
+    int r = dis_y(gen);
+    I0[r][c] = cfg.value_;
+    I1[r + cfg.offset_[1]][c + cfg.offset_[0]] = cfg.value_;
+  }
+  return { I0, I1 };
+}
+
+
+void generate_density(std::string json_filename, std::string source_filename, std::string target_filename) {
+  ConfigDensity cfg;
+  const auto [src, tgt] = create_density_maps(cfg);
+
+  save_density_map(src, source_filename);
+  save_density_map(tgt, target_filename);
+
+  // create an example json output file
+  nlohmann::json j_dens = {
+    {"compute_phi", true},
+    {"alpha", 0.001},
+    {"beta", 0.3},
+    {"sigma", 0.0},
+    {"iterations", 400},
+    {"epsilon", 0.5},
+    {"store_every", 80},
+    {"description", "something here..."},
+    {"output_folder", "translation/density"},
+    {"source_image", source_filename},
+    {"target_image", target_filename}
+  };
+  nlohmann::json j_run = {
+    {"run_density", j_dens}
+  };
+
+  // NOTE: std::setw makes the output add spaces to be more human readable
+  std::ofstream fp(json_filename);
+  if (fp)
+    fp << std::setw(4) << j_run;
+}
+
+int main(int argc, char** argv)
+{
+  argparse::ArgumentParser program("solver", "0.31415927");
+  program.add_argument("--example-skew")
+    .default_value(false)
+    .implicit_value(true)
+    .help("Creates example files: example_skew.json, source_skew.png and target_skew.png");
+  program.add_argument("--example-density")
+    .default_value(false)
+    .implicit_value(true)
+    .help("Creates example files: example_dens.json, source_dens.png and target_dens.png");
+  program.add_argument("-j", "--json")
+    .remaining()
+    .help("Runs the solver using the remaining list of json files (add this option at the end)");
+
+  try {
+    program.parse_args(argc, argv);
+  }
+  catch (const std::runtime_error& err) {
+    std::cerr << err.what() << std::endl;
+    std::cerr << program;
+    return 1;
+  }
+
+  bool example_skew = program["--example-skew"] == true;
+  bool example_dens = program["--example-density"] == true;
+  std::vector<std::string> json_filenames;
+  try {
+    json_filenames = program.get<std::vector<std::string>>("--json");
+  } catch (std::logic_error& e) {
+    // No files provided so nothing to do...
+  }
+
+  if (example_skew)
+    generate_skew("example_skew.json", "source_skew.png", "target_skew.png");
+  if (example_dens)
+    generate_density("example_dens.json", "source_dens.png", "target_dens.png");
+
+    // if no flags were provided, and there is no work provided, print the help
+    if (!example_skew && !example_dens && json_filenames.size() == 0)
+      std::cout << program;
+
+  for(auto& cur_json : json_filenames) {
+    auto [ok, cfg, message] = load_json_config(cur_json.c_str());
+    if (!message.empty())
+      std::cout << message << "\n";
+    if (!ok)
+      exit(1);
+    if (!cfg.verbose_validation())
+      exit(1);
+
+    run_solver(cfg);
+  }
+
+  exit(0);
+}

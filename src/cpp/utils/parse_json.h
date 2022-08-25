@@ -24,4 +24,15 @@ namespace utils {
         }
         return ret;
     }
+
+    template<typename T>
+    bool parse_required(const nlohmann::json& j, T&v, const char* name, const bool verbose = true) {
+        if (!j.contains(name)) {
+            if (verbose)
+                std::cerr << "The key \"" << std::string(name) << "\" is missing.\n";
+            return false;
+        }
+        v = j[name];
+        return true;
+    }
 } // namespace
