@@ -13,7 +13,7 @@ namespace utils {
         return r;
     }
 
-    Vec2i parse_Vec2i(const nlohmann::json& j, const char* name) {
+    inline Vec2i parse_Vec2i(const nlohmann::json& j, const char* name) {
         Vec2i ret{0,0};
         int i = 0;
         for (auto& elem : j[name]) {

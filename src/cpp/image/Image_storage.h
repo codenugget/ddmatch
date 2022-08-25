@@ -1,11 +1,13 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <tuple>
 
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+#include "Image.h"
 #include "Image_funcs.h"
 
 namespace ImageLib

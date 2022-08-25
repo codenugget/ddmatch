@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstring>
+#include <memory>
+
+#include "Image.h"
 
 namespace ImageLib
 {
