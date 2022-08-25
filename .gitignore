@@ -1,3 +1,4 @@
+/.vscode/
 /docker_build/
 /runtime/*
 /scripts/build/
