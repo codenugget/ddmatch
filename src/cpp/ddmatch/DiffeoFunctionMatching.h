@@ -51,6 +51,8 @@ public:
   const dGrid& phi_inv_x() const { return m_phiinvx; }
   const dGrid& phi_inv_y() const { return m_phiinvy; }
 
+  const VecDbl& energy() const { return m_E; }
+
 private:
   DiffeoFunctionMatching(const dGrid& source, const dGrid& target,
     double alpha, double beta, double sigma,

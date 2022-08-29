@@ -39,6 +39,7 @@ bool save_image(const dGrid& grid, const fs::path& filename) {
   return ok;
 }
 
+
 void drawline(dGrid& target, double r0, double c0, double r1, double c1, double scale) {
   // bresenham below
   int x1 = scale*c0, y1 = scale*r0, x2 = scale*c1, y2 = scale*r1;
@@ -130,6 +131,27 @@ dGrid combine_warp(const dGrid& dx, const dGrid& dy, const int cDivider, const d
   return ret;
 }
 
+void save_energy(DiffeoFunctionMatching* dfm, const fs::path& folder_path) {
+  const fs::path& filename = folder_path / "energy.csv";
+  auto E = dfm->energy();
+  auto energy = E.data();
+  std::cout << "Saving: " << filename << "\n";
+  std::ofstream thisfile(filename);
+  for (int i = 0; i < E.size(); i++) {
+    thisfile << i << "," << energy[i] << "\n";
+  }
+}
+
+/*
+void save_energy(const VecDbl& E, const fs::path& filename) {
+  std::cout << "Saving: " << filename << "\n";
+  std::ofstream thisfile(filename);
+  auto energy = E.data();
+  for (int i = 0; i < E.size(); i++) {
+    thisfile << i << "," << energy[i] << "\n";
+  }
+} */
+
 void save_state(DiffeoFunctionMatching* dfm, const fs::path& folder_path) {
   // NOTE: define what range we regard to be "almost 0" (cZeroLimit)
   const double cZeroLimit = 1e-3;
@@ -187,6 +209,7 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::Confi
   printf("%s: Creating plots\n", overview_path.string().c_str());
 
   save_state(dfm.get(), overview_path);
+  save_energy(dfm.get(), overview_path);
 }
 
 void run_solver(config_solver::ConfigRun& cfg) {
