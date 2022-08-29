@@ -275,7 +275,7 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     m_E[k+kE] += m_sigma * sum(m_tmpx);
 
     // Output progress
-    printf("k=%d/%d,  E=%f\n", k+1, niter,m_E[k+kE]);
+    //printf("k=%d/%d,  E=%f\n", k+1, niter,m_E[k+kE]);
 
 
     //self.image_compose(self.I1, self.phiinvx, self.phiinvy, self.I)

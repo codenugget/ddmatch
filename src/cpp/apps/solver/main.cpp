@@ -238,11 +238,15 @@ int main(int argc, char** argv)
   } catch (std::logic_error& e) {
     // No files provided so nothing to do...
   }
-
-  if (example_skew)
+  
+  if (example_skew) {
     examples::generate_skew("example_skew.json", "source_skew.png", "target_skew.png");
-  if (example_dens)
+    examples::print_instructions_skew();
+  }
+  if (example_dens) {
     examples::generate_density("example_dens.json", "source_dens.png", "target_dens.png");
+    examples::print_instructions_density();
+  }
 
     // if no flags were provided, and there is no work provided, print the help
     if (!example_skew && !example_dens && json_filenames.size() == 0)

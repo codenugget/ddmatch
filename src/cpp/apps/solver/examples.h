@@ -64,8 +64,8 @@ namespace examples {
             {"iterations", 400},
             {"epsilon", 0.5},
             {"store_every", 80},
-            {"description", "something here..."},
-            {"output_folder", "translation/density"},
+            {"description", "Deforming rectangle into skew parallelogram."},
+            {"output_folder", "translation/skew"},
             {"source_image", source_filename},
             {"target_image", target_filename}
         };
@@ -89,6 +89,16 @@ namespace examples {
             Vec2i resolution_ = Vec2i{128,128};
             double value_ = 1.0;
         };
+
+    inline void print_instructions_skew()
+    {
+        printf("Usage:\n   ./solver --json example_skew.json\nConfigure the example by changing default values in the .json file.\n");
+    }
+
+    inline void print_instructions_density()
+    {
+        printf("Usage:\n   ./solver --json example_density.json\nConfigure the example by changing default values in the .json file.\n");
+    }
 
     inline std::tuple<dGrid, dGrid> create_density_maps(const ConfigDensity& cfg)
     {
