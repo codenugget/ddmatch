@@ -32,7 +32,7 @@ namespace examples {
         Vec2i p0_ = Vec2i{10,10};
         Vec2i nPoints_ = Vec2i{25,25};
         Vec2i offset_ = Vec2i{13,13};
-        Vec2i resolution_ = Vec2i{128,128};
+        Vec2i resolution_ = Vec2i{256,256};
         double value_ = 1.0;
     };
 
