@@ -28,6 +28,7 @@ static __host__ __device__ inline float RealScale(float, float);
 static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);
 static __device__ __host__ inline Complex ComplexScale(Complex, float);
 static __device__ __host__ inline float diff_square(Complex, Complex);
+//static __device__ __host__ inline float dot_sum(float, float);
 static __device__ __host__ inline void periodic_1d(int, int, float, const float, const int);
 static __device__ __host__ inline void periodic_1d_shift(int, int, int, int, float, const float, const int);
 
@@ -37,6 +38,7 @@ static __global__ void PointwiseScale(float*, int, float);
 static __global__ void Complex_diffsq(float*, const Complex*, const Complex*, int);
 static __global__ void ComplexPointwiseScale(Complex*, int, float);
 static __global__ void Diffsq(float*, const float*, const float*, int);
+static __global__ void Dotsum(float*, const float*, const float*, int);
 // Question: What is the meaning of inline?
 static __global__ inline void image_compose_2d(const float*, const float*, const float*, float*, const int, const int);
 static __global__ inline void diffeo_gradient_x_2d(const float*, float*, float*, const int, const int);
@@ -165,6 +167,21 @@ int extendedCUFFT::run() {
     fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU\n");
     return -1;
   }
+
+  //  Decide whether to use indexing (a,b) or (y,x) 
+  //  There is confusion with (y,x), since usually x is first, but not on images like here...  
+
+  // diffeo_gradient_x_2d<<<1,NX>>>(phiinvx, m_bb, m_ba, w, h);
+  // diffeo_gradient_y_2d<<<1,NX>>>(phiinvy, m_ab, m_aa, w, h);
+
+  //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
+  //np.copyto(self.h[1,0], self.yddx*self.yddy+self.xddx*self.xddy)
+  //np.copyto(self.h[0,1], self.yddy*self.yddx+self.xddy*self.xddx)
+  //np.copyto(self.h[1,1], self.yddx*self.yddx+self.xddx*self.xddx)
+  // Dotsum<<<1,NX>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);
+  // Dotsum<<<1,NX>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
+  // Dotsum<<<1,NX>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
+  // Dotsum<<<1,NX>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
 
   // perform Fourier transform
   if (cufftPlan1d(&plan, NX, CUFFT_R2C, BATCH) != CUFFT_SUCCESS){
@@ -430,6 +447,11 @@ static __host__ __device__ inline Complex ComplexScale(Complex a, float s) {
   return c;
 }
 
+/*
+static __device__ __host__ inline float dot_sum(float x, float y) {
+  return x*x + y*y;
+}*/
+
 // Difference squared
 static __device__ __host__ inline float diff_square(Complex a, Complex b) {
   float d = (a.x-b.x)*(a.x-b.x) + (a.y-b.y)*(a.y-b.y);
@@ -469,6 +491,13 @@ static __global__ void Diffsq(float *res, const float *a, const float *b, int si
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
   for (int i = threadID; i < size; i += numThreads)
     res[i] = (a[i] - b[i])*(a[i] - b[i]);
+}
+
+static __global__ void Dotsum(float *res, const float *a, const float *b, int size) {
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < size; i += numThreads)
+    res[i] = a[i]*a[i] + b[i]*b[i];
 }
 
 // Real pointwise multiplication
