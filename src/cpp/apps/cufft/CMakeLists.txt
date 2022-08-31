@@ -5,10 +5,12 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 set(src
-    helloCUFFT.cu
+    extendedCUFFT.cu
+    extendedCUFFT.h
 )
 
-add_executable(${PROJECT_NAME} helloCUFFT.cu)
+#add_executable(${PROJECT_NAME} ${src})
+add_library(${PROJECT_NAME} ${src})
 
 target_include_directories(
   ${PROJECT_NAME}
