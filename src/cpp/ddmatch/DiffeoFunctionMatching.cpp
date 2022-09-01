@@ -38,14 +38,6 @@ void DiffeoFunctionMatching::setup() {
   const dGrid& I0 = m_source;
   const dGrid& I1 = m_target;
 
-  // Create optimized algorithm functions
-  //self.image_compose = image_compose_2d;//generate_optimized_image_composition(I1)
-  //self.diffeo_compose = diffeo_compose_2d;//generate_optimized_diffeo_composition(I1)
-  //self.image_gradient = image_gradient_2d;//generate_optimized_image_gradient(I1)
-  //self.diffeo_gradient_y = diffeo_gradient_y_2d;//generate_optimized_diffeo_gradient_y(I1)
-  //self.diffeo_gradient_x = diffeo_gradient_x_2d;//generate_optimized_diffeo_gradient_x(I1)
-  //self.evaluate = eval_diffeo_2d;//generate_optimized_diffeo_evaluation(I1)
-
   // Allocate and initialize variables
   m_rows = I1.rows();
   m_cols = I1.cols();
@@ -62,11 +54,6 @@ void DiffeoFunctionMatching::setup() {
   //np.copyto(self.I,I1)
   m_I = I0;
 
-  //self.dIdx = np.zeros_like(I1)
-  //self.dIdy = np.zeros_like(I1)
-  //self.vx = np.zeros_like(I1)
-  //self.vy = np.zeros_like(I1)
-  //self.divv = np.zeros_like(I1)
   m_dIdx = zeros_like(I1);
   m_dIdy = zeros_like(I1);
   m_vx = zeros_like(I1);
@@ -80,28 +67,18 @@ void DiffeoFunctionMatching::setup() {
   auto y = MyLinspace<double>(0, m_rows, m_rows, false);
   std::tie(m_idx, m_idy) = MyMeshGrid(x,y);
 
-  //self.phiinvx = self.idx.copy()
-  //self.phiinvy = self.idy.copy()
-  //self.psiinvx = self.idx.copy()
-  //self.psiinvy = self.idy.copy()
   m_phiinvx = m_idx;
   m_phiinvy = m_idy;
   m_psiinvx = m_idx;
   m_psiinvy = m_idy;
 
   if (m_compute_phi) {
-    //self.phix = self.idx.copy()
-    //self.phiy = self.idy.copy() 
-    //self.psix = self.idx.copy()
-    //self.psiy = self.idy.copy() 
     m_phix = m_idx;
     m_phiy = m_idy;
     m_psix = m_idx;
     m_psiy = m_idy;
   }
 
-  //self.tmpx = self.idx.copy()
-  //self.tmpy = self.idy.copy()
   m_tmpx = m_idx;
   m_tmpy = m_idy;
 
@@ -124,19 +101,6 @@ void DiffeoFunctionMatching::setup() {
   m_h[1].emplace_back(zeros_like(I1));
   m_h[1].emplace_back(zeros_like(I1));
 
-  //self.hdet = np.zeros_like(I1)
-  //self.dhaadx = np.zeros_like(I1)
-  //self.dhbadx = np.zeros_like(I1)
-  //self.dhabdx = np.zeros_like(I1)
-  //self.dhbbdx = np.zeros_like(I1)
-  //self.dhaady = np.zeros_like(I1)
-  //self.dhbady = np.zeros_like(I1)
-  //self.dhabdy = np.zeros_like(I1)
-  //self.dhbbdy = np.zeros_like(I1)
-  //self.yddy = np.zeros_like(I1)
-  //self.yddx = np.zeros_like(I1)
-  //self.xddy = np.zeros_like(I1)
-  //self.xddx = np.zeros_like(I1)
   m_hdet   = zeros_like(I1);
   m_dhaadx = zeros_like(I1);
   m_dhbadx = zeros_like(I1);
@@ -235,37 +199,18 @@ void DiffeoFunctionMatching::setup() {
 void DiffeoFunctionMatching::run(int niter, double epsilon) {
   // Carry out the matching process.
   // Implements to algorithm in the paper by Modin and Karlsson
-  // kE = len(self.E)
-  // self.E = np.hstack((self.E,np.zeros(niter)))
   int kE = (int) m_E.size();
   m_E.resize(kE+niter, 0);
   for(int k = 0; k < niter; ++k) {
     // OUTPUT
-    //np.copyto(self.tmpx, self.I)
-    //np.copyto(self.tmpy, self.I0)
-    //self.tmpx = self.tmpx-self.tmpy
-    //self.tmpx **= 2
-    //self.E[k+kE] = self.tmpx.sum()
-
-    //copyto(m_tmpx, m_I);
-    //copyto(m_tmpy, m_I0);
-    //m_tmpx -= m_tmpy;
-    //elem_func_inplace(m_tmpx, [](double v){ return v*v; });
     const auto diff_sq = [](const double v1, const double v2) {
       const double v = (v1 - v2);
       return v * v;
     };
     elem_set(m_tmpx, m_I, m_target, diff_sq);
-    //elem_set(m_tmpx, m_I, m_I0, diff_sq);
+
     m_E[k+kE] = sum(m_tmpx);
 
-    //np.copyto(
-    // self.tmpx,
-    //  (self.h[0,0]-self.g[0,0])**2 +
-    //  (self.h[1,0]-self.g[1,0])**2 +
-    //  (self.h[0,1]-self.g[0,1])**2 +
-    //  (self.h[1,1]-self.g[1,1])**2
-    //)
     elem_set(m_tmpx, m_h[0][0], m_g[0][0], diff_sq);
     elem_add(m_tmpx, m_h[1][0], m_g[1][0], diff_sq);
     elem_add(m_tmpx, m_h[0][1], m_g[0][1], diff_sq);
@@ -274,96 +219,32 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     //self.E[k+kE] += self.sigma*self.tmpx.sum()
     m_E[k+kE] += m_sigma * sum(m_tmpx);
 
-    // Output progress
-    //printf("k=%d/%d,  E=%f\n", k+1, niter,m_E[k+kE]);
-
-
-    //self.image_compose(self.I1, self.phiinvx, self.phiinvy, self.I)
-    //image_compose_2d(m_I1, m_phiinvx, m_phiinvy, m_I);
     // NOTE: should we check return value or not? I think not but just a heads-up in case
     image_compose_2d(m_source, m_phiinvx, m_phiinvy, m_I);
 
-    //self.diffeo_gradient_y(self.phiinvy, self.yddx, self.yddy)
-    //self.diffeo_gradient_x(self.phiinvx, self.xddx, self.xddy)
     diffeo_gradient_y_2d(m_phiinvy, m_yddx, m_yddy);
     diffeo_gradient_x_2d(m_phiinvx, m_xddx, m_xddy);
 
-    // NOTE: Double check that we should square the squared sum. (It seems so but I just don't want to do a silly mistake in the conversion here)
+    // NOTE: Double check that we should square the squared sum.
     const auto square_sum = [](const double x, const double y){
       const double v = x*x + y*y;
       return v*v;
     };
-    //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
-    elem_set(m_h[0][0], m_yddy, m_xddy, square_sum);
     const auto dot_sum = [](const double x, const double y, const double z, const double w){
       const double v = x*y + z*w;
       return v*v;
     };
-    //np.copyto(self.h[1,0], self.yddx*self.yddy+self.xddx*self.xddy)
+
+    elem_set(m_h[0][0], m_yddy, m_xddy, square_sum);
     elem_set(m_h[1][0], m_yddx, m_yddy, m_xddx, m_xddy, dot_sum);
-    //np.copyto(self.h[0,1], self.yddy*self.yddx+self.xddy*self.xddx)
     elem_set(m_h[0][1], m_yddy, m_yddx, m_xddy, m_xddx, dot_sum);
-    //np.copyto(self.h[1,1], self.yddx*self.yddx+self.xddx*self.xddx)
     elem_set(m_h[1][1], m_yddx, m_xddx, square_sum);
 
-    //self.image_gradient(self.h[0,0], self.dhaadx, self.dhaady)
-    //self.image_gradient(self.h[0,1], self.dhabdx, self.dhabdy)
-    //self.image_gradient(self.h[1,0], self.dhbadx, self.dhbady)
-    //self.image_gradient(self.h[1,1], self.dhbbdx, self.dhbbdy)
     image_gradient_2d(m_h[0][0], m_dhaadx, m_dhaady);
     image_gradient_2d(m_h[0][1], m_dhabdx, m_dhabdy);
     image_gradient_2d(m_h[1][0], m_dhbadx, m_dhbady);
     image_gradient_2d(m_h[1][1], m_dhbbdx, m_dhbbdy);
 
-    //np.copyto(
-    //  self.Jmap[0],
-    //   -(self.h[0,0]-self.g[0,0])*self.dhaady
-    //   -(self.h[0,1]-self.g[0,1])*self.dhabdy
-    //   -(self.h[1,0]-self.g[1,0])*self.dhbady
-    //   -(self.h[1,1]-self.g[1,1])*self.dhbbdy
-    //   +2*self.dhaady*self.h[0,0]
-    //   +2*self.dhabdx*self.h[0,0]
-    //   +2*self.dhbady*self.h[1,0]
-    //   +2*self.dhbbdx*self.h[1,0]
-    //   +2*(self.h[0,0]-self.g[0,0])*self.dhaady
-    //   +2*(self.h[1,0]-self.g[1,0])*self.dhbady
-    //   +2*(self.h[0,1]-self.g[0,1])*self.dhaadx
-    //   +2*(self.h[1,1]-self.g[1,1])*self.dhbadx)
-    // TODO: this is very slow and needs to be rewritten
-#if 0
-    // expanding code for verficiation or simplification at a later stage
-    aa = m_h[0][0], AA = m_g[0][0]
-    ab = m_h[0][1], AB = m_g[0][1]
-    ba = m_h[1][0], BA = m_g[1][0]
-    bb = m_h[1][1], BB = m_g[1][1]
-
-    y11 = m_dhaady
-    y12 = m_dhabdy
-    y21 = m_dhbady
-    y22 = m_dhbbdy
-
-    x11 = m_dhaadx
-    x12 = m_dhabdx
-    x21 = m_dhbadx
-    x22 = m_dhbbdx
-
-    J[0] =-( (aa-AA)*y11 + (ab-AB)*y12 + (ba-BA)*y21 + (bb-BB)*y22 )
-      +2.0*( (aa)   *y11 + (aa)   *x12 + (ba)   *y21 + (ba)   *x22
-           +((aa-AA)*y11)+((ab-AB)*x11)+((ba-BA)*y21)+((bb-BB)*x21));
-
-    J[1] =-( (aa-AA)*x11 + (ab-AB)*x12 + (ba-BA)*x21 + (bb-BB)*x22 )
-      +2.0*( (ab)   *y11 + (ab)   *x12 + (bb)   *y21 + (bb)   *x22
-           +((aa-AA)*y12)+((ab-AB)*x12)+((ba-BA)*y22)+((bb-BB)*x22));
-
-    // alternatively hrc = m_h[r][c], grc = m_g[r][c]
-    J[0] =-( (h11-g11)*y11 + (h12-g12)*y12 + (h21-g21)*y21 + (h22-g22)*y22 )
-      +2.0*( (h11)    *y11 + (h11)    *x12 + (h21)    *y21 + (h21)    *x22
-           +((h11-g11)*y11)+((h12-g12)*x11)+((h21-g21)*y21)+((h22-g22)*x21));
-
-    J[1] =-( (h11-g11)*x11 + (h12-g12)*x12 + (h21-g21)*x21 + (h22-g22)*x22 )
-      +2.0*( (h12)    *y11 + (h12)    *x12 + (h22)    *y21 + (h22)    *x22
-          + ((h11-g11)*y12)+((h12-g12)*x12)+((h21-g21)*y22)+((h22-g22)*x22));
-#endif
     m_Jmap[0] =
       -(
          (m_h[0][0]-m_g[0][0]) * m_dhaady
@@ -382,21 +263,6 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
         +((m_h[1][1]-m_g[1][1])*m_dhbadx)
       );
 
-    //np.copyto(
-    //  self.Jmap[1],
-    //    -(self.h[0,0]-self.g[0,0])*self.dhaadx
-    //    -(self.h[0,1]-self.g[0,1])*self.dhabdx
-    //    -(self.h[1,0]-self.g[1,0])*self.dhbadx
-    //    -(self.h[1,1]-self.g[1,1])*self.dhbbdx
-    //    +2*self.dhaady*self.h[0,1]
-    //    +2*self.dhabdx*self.h[0,1]
-    //    +2*self.dhbady*self.h[1,1]
-    //    +2*self.dhbbdx*self.h[1,1]
-    //    +2*(self.h[0,0]-self.g[0,0])*self.dhabdy
-    //    +2*(self.h[1,0]-self.g[1,0])*self.dhbbdy
-    //    +2*(self.h[0,1]-self.g[0,1])*self.dhabdx
-    //    +2*(self.h[1,1]-self.g[1,1])*self.dhbbdx)
-    // TODO: this is very slow and needs to be rewritten
     m_Jmap[1] =
       -(
          (m_h[0][0]-m_g[0][0]) * m_dhaadx
@@ -432,70 +298,9 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     //m_vx = -(m_I-m_target)*m_dIdx + (2.0*m_sigma)*m_Jmap[1]; //# axis: [1]
     //m_vy = -(m_I-m_target)*m_dIdy + (2.0*m_sigma)*m_Jmap[0]; //# axis: [0]
 
-/*
-    // Test case
-    int N = (int)m_rows*m_cols;
-    double lin[N];
-    for (int i=0; i < N; i++) {
-      lin[i] = exp(-i/double(m_cols));
-    }
-    dGrid vin(m_rows,m_cols,0);
-    for (int i = 0; i < m_rows; i++) {
-      for (int j = 0; j < m_cols; j++) { 
-        vin[i][j] = lin[j+m_cols*i];
-      }
-    }
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 4; j++) {
-        printf("v[%d,%d] = %f\n", i, j, vin[i][j]);
-        //m_vx[i][j] = res[j+m_cols*i][0];  //Q: real part or amplitude?
-      }
-    }
-    smoothing(vin, m_alpha, m_beta);
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 4; j++) {
-        printf("Av[%d,%d] = %f\n", i, j, vin[i][j]);
-        //m_vx[i][j] = res[j+m_cols*i][0];  //Q: real part or amplitude?
-      }
-    }
-    if ( (vin[0][0]-0.025567)*(vin[0][0]-0.025567) < 0.1 ) {
-      printf("OK!\n Av[0,0] = %f\n", vin[0][0]);
-    }
-*/
-
     // Perform Fourier transform and multiply with inverse of A
     smoothing(m_vx, m_alpha, m_beta);
     smoothing(m_vy, m_alpha, m_beta);
-
-    //fftx = np.fft.fftn(self.vx)
-    //ffty = np.fft.fftn(self.vy)
-    //fftx *= self.Linv
-    //ffty *= self.Linv
-
-    // TODO: This part is very slow and needs to be rewritten
-    //cdGrid fftx = to_cdGrid(m_vx);
-    //cdGrid ffty = to_cdGrid(m_vy);
-    //calc_fft(fftx);
-    //calc_fft(ffty);
-    //cdGrid fftx = fftn(m_vx);
-    //cdGrid ffty = fftn(m_vy);
-    //self_mul(fftx, m_Linv);
-    //self_mul(ffty, m_Linv);
-
-    //self.vx[:] = -np.fft.ifftn(fftx).real # vx[:]=smth will copy while vx=smth directs a pointer
-    //self.vy[:] = -np.fft.ifftn(ffty).real
-    //m_vx[:] = -ifftn(fftx).real(); // vx[:]=smth will copy while vx=smth directs a pointer
-    //m_vy[:] = -ifftn(ffty).real();
-    //calc_ifft(fftx);
-    //calc_ifft(ffty);
-    // Q: Real part or amplitude?
-    //const auto proc_elem1 = [](const std::complex<double> e) {
-    //  return -e.real();
-    //};
-    //elem_set(m_vx, fftx, proc_elem1);
-    //elem_set(m_vy, ffty, proc_elem1);
-    //m_vx = -(real(fftx)); // vx[:]=smth will copy while vx=smth directs a pointer
-    //m_vy = -(real(ffty));
 
     // STEP 4 (v = -grad E, so to compute the inverse we solve \psiinv' = -epsilon*v o \psiinv)
     //np.copyto(self.tmpx, self.vx)
