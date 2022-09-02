@@ -45,6 +45,7 @@ static __global__ inline void image_compose_2d(const float*, const float*, const
 static __global__ inline void diffeo_gradient_x_2d(const float*, float*, float*, const int, const int);
 static __global__ inline void diffeo_gradient_y_2d(const float*, float*, float*, const int, const int);
 static __global__ inline void Jmapping(float*, float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const int);
+static __global__ inline void FullJmap(float*, float*, const float*, const float*, const float*, const float*, const float, const int);
 
 std::tuple<std::unique_ptr<extendedCUFFT>, std::string> extendedCUFFT::create(
     const float* source, const float* target,
@@ -71,6 +72,7 @@ int extendedCUFFT::run() {
   Basic usage of real-to-complex 1D Fourier transform.
   */
 
+  m_sigma = 0.1f;
   const int NX = IMAGESIZE*IMAGESIZE;
   int w, h;
   float *I, *I0, *xphi, *yphi, *Iout;
@@ -128,6 +130,9 @@ int extendedCUFFT::run() {
   cudaMalloc((void**)&xddy, sizeof(float)*NX);
   cudaMalloc((void**)&yddx, sizeof(float)*NX);
   cudaMalloc((void**)&yddy, sizeof(float)*NX);
+  cudaMalloc((void**)&m_I,  sizeof(float)*NX);
+  cudaMalloc((void**)&m_dIda, sizeof(float)*NX);  // image gradient
+  cudaMalloc((void**)&m_dIdb, sizeof(float)*NX);
   cudaMalloc((void**)&m_aa, sizeof(float)*NX);  // diffeo gradient
   cudaMalloc((void**)&m_ab, sizeof(float)*NX);  // m_ab = dphi_a / db
   cudaMalloc((void**)&m_ba, sizeof(float)*NX);
@@ -160,6 +165,7 @@ int extendedCUFFT::run() {
   // Copy signal to device
   cudaMemcpy(I,  idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(I0, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(m_I, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);       //TODO: read from image
   cudaMemcpy(phiinvx, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(phiinvy, idy, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(data, h_signal, sizeof(float)*NX, cudaMemcpyHostToDevice);
@@ -219,7 +225,12 @@ int extendedCUFFT::run() {
        m_dhaadb, m_dhabdb, m_dhbadb, m_dhbbdb, 
        NX);
 
-  
+  image_gradient_2d<<<1,NX>>>(m_I, m_dIda, m_dIdb, w, h);
+
+  FullJmap<<<1,NX>>>(m_Ja, m_Ja, m_I, I0, m_dIda, m_dIdb, m_sigma, NX);
+  // returns   -(I-I0)*dI + sigma*( Jmapping );
+
+  // TODO: configure smoothing routine, introduce alpha and beta, create k-vector
 
   // perform Fourier transform
   if (cufftPlan1d(&plan, NX, CUFFT_R2C, BATCH) != CUFFT_SUCCESS){
@@ -275,6 +286,7 @@ int extendedCUFFT::run() {
   free(h_result);
   free(idx);
   free(idy);
+  //free(m_sigma);
   cudaFree(I);
   cudaFree(I0);
   cudaFree(tmpx);
@@ -285,6 +297,9 @@ int extendedCUFFT::run() {
   cudaFree(xddy);
   cudaFree(yddx);
   cudaFree(yddy);
+  cudaFree(m_I);
+  cudaFree(m_dIda);
+  cudaFree(m_dIdb);
   cudaFree(m_aa);
   cudaFree(m_ab);
   cudaFree(m_ba);
@@ -581,6 +596,18 @@ static __global__ void Dotsum(float *res, const float *a, const float *b, const 
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
   for (int i = threadID; i < size; i += numThreads)
     res[i] = (a[i]*b[i] + c[i]*d[i]); // * (a[i]*b[i] + c[i]*d[i]);   // Return square of ab+cd ?
+}
+
+static __global__ inline void FullJmap(float* Ja, float* Jb, const float *I0, const float *I, const float *dIda, const float *dIdb, const float sigma, const int size) {
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  float thisJ;
+  for (int i = threadID; i < size; i+= numThreads) {
+    thisJ = Ja[i];
+    Ja[i] = -(I[i] - I0[i])*dIda[i] + 2.0f*sigma*thisJ;  // I0 is the target?
+    thisJ = Jb[i];
+    Ja[i] = -(I[i] - I0[i])*dIda[i] + 2.0f*sigma*thisJ;
+  }
 }
 
 static __global__ inline void Jmapping(float *resa, float *resb, 
