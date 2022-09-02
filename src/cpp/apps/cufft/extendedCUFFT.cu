@@ -44,7 +44,7 @@ static __global__ inline void image_gradient_2d(const float*, float*, float*, co
 static __global__ inline void image_compose_2d(const float*, const float*, const float*, float*, const int, const int);
 static __global__ inline void diffeo_gradient_x_2d(const float*, float*, float*, const int, const int);
 static __global__ inline void diffeo_gradient_y_2d(const float*, float*, float*, const int, const int);
-
+static __global__ inline void Jmapping(float*, float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const int);
 
 std::tuple<std::unique_ptr<extendedCUFFT>, std::string> extendedCUFFT::create(
     const float* source, const float* target,
@@ -128,14 +128,18 @@ int extendedCUFFT::run() {
   cudaMalloc((void**)&xddy, sizeof(float)*NX);
   cudaMalloc((void**)&yddx, sizeof(float)*NX);
   cudaMalloc((void**)&yddy, sizeof(float)*NX);
-  cudaMalloc((void**)&m_aa, sizeof(float)*NX);
-  cudaMalloc((void**)&m_ab, sizeof(float)*NX);
+  cudaMalloc((void**)&m_aa, sizeof(float)*NX);  // diffeo gradient
+  cudaMalloc((void**)&m_ab, sizeof(float)*NX);  // m_ab = dphi_a / db
   cudaMalloc((void**)&m_ba, sizeof(float)*NX);
   cudaMalloc((void**)&m_bb, sizeof(float)*NX);
-  cudaMalloc((void**)&m_haa, sizeof(float)*NX);
+  cudaMalloc((void**)&m_haa, sizeof(float)*NX);  // (to become) pushforward of initial diffeo
   cudaMalloc((void**)&m_hab, sizeof(float)*NX);
   cudaMalloc((void**)&m_hba, sizeof(float)*NX);
   cudaMalloc((void**)&m_hbb, sizeof(float)*NX);
+  cudaMalloc((void**)&m_gaa, sizeof(float)*NX);  // initial diffeo
+  cudaMalloc((void**)&m_gab, sizeof(float)*NX);
+  cudaMalloc((void**)&m_gba, sizeof(float)*NX);
+  cudaMalloc((void**)&m_gbb, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhaada, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhabda, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhbada, sizeof(float)*NX);
@@ -144,6 +148,8 @@ int extendedCUFFT::run() {
   cudaMalloc((void**)&m_dhabdb, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhbadb, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhbbdb, sizeof(float)*NX);
+  cudaMalloc((void**)&m_Ja, sizeof(float)*NX);
+  cudaMalloc((void**)&m_Jb, sizeof(float)*NX);
   cudaMalloc((void**)&res,  sizeof(float));
   cudaMalloc((void**)&odata, sizeof(Complex)*(NX/2+1));
   if (cudaGetLastError() != cudaSuccess){
@@ -205,6 +211,15 @@ int extendedCUFFT::run() {
   // static __global__ inline void image_gradient_2d(const float *img, float *df_a, float *df_b, const int w, const int h) {
   //      df_a[i*w + j] = (img[(i+1)*w+j] - img[(i-1)*w+j])/2.0f;
   //      df_b[i*w + j] = (img[i*w + j+1] - img[i*w + j-1])/2.0f;
+
+  Jmapping<<<1,NX>>>(m_Ja, m_Jb, 
+       m_haa,    m_hab,    m_hba,    m_hbb, 
+       m_gaa,    m_gab,    m_gba,    m_gbb, 
+       m_dhaada, m_dhabda, m_dhbada, m_dhbbda, 
+       m_dhaadb, m_dhabdb, m_dhbadb, m_dhbbdb, 
+       NX);
+
+  
 
   // perform Fourier transform
   if (cufftPlan1d(&plan, NX, CUFFT_R2C, BATCH) != CUFFT_SUCCESS){
@@ -278,6 +293,10 @@ int extendedCUFFT::run() {
   cudaFree(m_hab);
   cudaFree(m_hba);
   cudaFree(m_hbb);
+  cudaFree(m_gaa);
+  cudaFree(m_gab);
+  cudaFree(m_gba);
+  cudaFree(m_gbb);
   cudaFree(m_dhaada);
   cudaFree(m_dhabda);
   cudaFree(m_dhbada);
@@ -286,6 +305,8 @@ int extendedCUFFT::run() {
   cudaFree(m_dhabdb);
   cudaFree(m_dhbadb);
   cudaFree(m_dhbbdb);
+  cudaFree(m_Ja);
+  cudaFree(m_Jb);
   cudaFree(res);
   cudaFree(data);
   cudaFree(odata);
@@ -561,6 +582,50 @@ static __global__ void Dotsum(float *res, const float *a, const float *b, const 
   for (int i = threadID; i < size; i += numThreads)
     res[i] = (a[i]*b[i] + c[i]*d[i]); // * (a[i]*b[i] + c[i]*d[i]);   // Return square of ab+cd ?
 }
+
+static __global__ inline void Jmapping(float *resa, float *resb, 
+       const float *haa, const float *hab, const float *hba, const float *hbb, 
+       const float *gaa, const float *gab, const float *gba, const float *gbb, 
+       const float *dhaada, const float *dhabda, const float *dhbada, const float *dhbbda, 
+       const float *dhaadb, const float *dhabdb, const float *dhbadb, const float *dhbbdb, 
+       const int size) 
+{
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < size; i+= numThreads) {
+    resa[i] =
+      -( (haa[i]-gaa[i]) * dhaada[i]
+        +(hab[i]-gab[i]) * dhabda[i]
+        +(hba[i]-gba[i]) * dhbada[i]
+        +(hbb[i]-gbb[i]) * dhbbda[i] )
+      +2.0f*(
+         (dhaada[i] * haa[i])
+        +(dhabdb[i] * haa[i])
+        +(dhbada[i] * hba[i])
+        +(dhbbdb[i] * hba[i])
+        +((haa[i]-gaa[i])*dhaada[i])
+        +((hba[i]-gba[i])*dhbada[i])
+        +((hab[i]-gab[i])*dhaadb[i])
+        +((hbb[i]-gbb[i])*dhbadb[i])
+           );
+    resb[i] =
+      -( (haa[i]-gaa[i]) * dhaadb[i]
+        +(hab[i]-gab[i]) * dhabdb[i]
+        +(hba[i]-gba[i]) * dhbadb[i]
+        +(hbb[i]-gbb[i]) * dhbbdb[i] )
+      +2.0f*(
+         (dhaada[i] * hab[i])
+        +(dhabdb[i] * hab[i])
+        +(dhbada[i] * hbb[i])
+        +(dhbbdb[i] * hbb[i])
+        +((haa[i]-gaa[i])*dhaada[i])
+        +((hba[i]-gba[i])*dhbada[i])
+        +((hab[i]-gab[i])*dhaadb[i])
+        +((hbb[i]-gbb[i])*dhbadb[i])
+           );
+  }
+}
+
 
 // Real pointwise multiplication
 static __global__ void PointwiseScale(float *a, int size, float scale) {

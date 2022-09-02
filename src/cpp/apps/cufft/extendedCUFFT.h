@@ -53,8 +53,10 @@ private:
   float *idx, *idy;
   float *m_aa, *m_ab, *m_ba, *m_bb;
   float *m_haa, *m_hab, *m_hba, *m_hbb;
+  float *m_gaa, *m_gab, *m_gba, *m_gbb;
   float *m_dhaada, *m_dhabda, *m_dhbada, *m_dhbbda;
   float *m_dhaadb, *m_dhabdb, *m_dhbadb, *m_dhbbdb;
+  float *m_Ja, *m_Jb;
 };
 
 
