@@ -51,7 +51,10 @@ private:
   float *data;
   float *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;
   float *idx, *idy;
-
+  float *m_aa, *m_ab, *m_ba, *m_bb;
+  float *m_haa, *m_hab, *m_hba, *m_hbb;
+  float *m_dhaada, *m_dhabda, *m_dhbada, *m_dhbbda;
+  float *m_dhaadb, *m_dhabdb, *m_dhbadb, *m_dhbbdb;
 };
 
 

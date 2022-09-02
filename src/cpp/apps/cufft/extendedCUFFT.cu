@@ -38,8 +38,9 @@ static __global__ void PointwiseScale(float*, int, float);
 static __global__ void Complex_diffsq(float*, const Complex*, const Complex*, int);
 static __global__ void ComplexPointwiseScale(Complex*, int, float);
 static __global__ void Diffsq(float*, const float*, const float*, int);
-static __global__ void Dotsum(float*, const float*, const float*, int);
+static __global__ void Dotsum(float*, const float*, const float*, const float*, const float*, int);
 // Question: What is the meaning of inline?
+static __global__ inline void image_gradient_2d(const float*, float*, float*, const int, const int);
 static __global__ inline void image_compose_2d(const float*, const float*, const float*, float*, const int, const int);
 static __global__ inline void diffeo_gradient_x_2d(const float*, float*, float*, const int, const int);
 static __global__ inline void diffeo_gradient_y_2d(const float*, float*, float*, const int, const int);
@@ -127,6 +128,22 @@ int extendedCUFFT::run() {
   cudaMalloc((void**)&xddy, sizeof(float)*NX);
   cudaMalloc((void**)&yddx, sizeof(float)*NX);
   cudaMalloc((void**)&yddy, sizeof(float)*NX);
+  cudaMalloc((void**)&m_aa, sizeof(float)*NX);
+  cudaMalloc((void**)&m_ab, sizeof(float)*NX);
+  cudaMalloc((void**)&m_ba, sizeof(float)*NX);
+  cudaMalloc((void**)&m_bb, sizeof(float)*NX);
+  cudaMalloc((void**)&m_haa, sizeof(float)*NX);
+  cudaMalloc((void**)&m_hab, sizeof(float)*NX);
+  cudaMalloc((void**)&m_hba, sizeof(float)*NX);
+  cudaMalloc((void**)&m_hbb, sizeof(float)*NX);
+  cudaMalloc((void**)&m_dhaada, sizeof(float)*NX);
+  cudaMalloc((void**)&m_dhabda, sizeof(float)*NX);
+  cudaMalloc((void**)&m_dhbada, sizeof(float)*NX);
+  cudaMalloc((void**)&m_dhbbda, sizeof(float)*NX);
+  cudaMalloc((void**)&m_dhaadb, sizeof(float)*NX);
+  cudaMalloc((void**)&m_dhabdb, sizeof(float)*NX);
+  cudaMalloc((void**)&m_dhbadb, sizeof(float)*NX);
+  cudaMalloc((void**)&m_dhbbdb, sizeof(float)*NX);
   cudaMalloc((void**)&res,  sizeof(float));
   cudaMalloc((void**)&odata, sizeof(Complex)*(NX/2+1));
   if (cudaGetLastError() != cudaSuccess){
@@ -171,17 +188,23 @@ int extendedCUFFT::run() {
   //  Decide whether to use indexing (a,b) or (y,x) 
   //  There is confusion with (y,x), since usually x is first, but not on images like here...  
 
-  // diffeo_gradient_x_2d<<<1,NX>>>(phiinvx, m_bb, m_ba, w, h);
-  // diffeo_gradient_y_2d<<<1,NX>>>(phiinvy, m_ab, m_aa, w, h);
+  diffeo_gradient_x_2d<<<1,NX>>>(phiinvx, m_bb, m_ba, w, h);
+  diffeo_gradient_y_2d<<<1,NX>>>(phiinvy, m_ab, m_aa, w, h);
 
-  //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
-  //np.copyto(self.h[1,0], self.yddx*self.yddy+self.xddx*self.xddy)
-  //np.copyto(self.h[0,1], self.yddy*self.yddx+self.xddy*self.xddx)
-  //np.copyto(self.h[1,1], self.yddx*self.yddx+self.xddx*self.xddx)
-  // Dotsum<<<1,NX>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);
-  // Dotsum<<<1,NX>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
-  // Dotsum<<<1,NX>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
-  // Dotsum<<<1,NX>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
+  Dotsum<<<1,NX>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);   //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
+  Dotsum<<<1,NX>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
+  Dotsum<<<1,NX>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
+  Dotsum<<<1,NX>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
+  //Dotsum(float *res, const float *a, const float *b, int size) {
+  //   return res[i] = a[i]*a[i] + b[i]*b[i];
+
+  image_gradient_2d<<<1,NX>>>(m_haa, m_dhaada, m_dhaadb, w, h);
+  image_gradient_2d<<<1,NX>>>(m_hab, m_dhabda, m_dhabdb, w, h);
+  image_gradient_2d<<<1,NX>>>(m_hba, m_dhbada, m_dhbadb, w, h);
+  image_gradient_2d<<<1,NX>>>(m_hbb, m_dhbbda, m_dhbbdb, w, h);
+  // static __global__ inline void image_gradient_2d(const float *img, float *df_a, float *df_b, const int w, const int h) {
+  //      df_a[i*w + j] = (img[(i+1)*w+j] - img[(i-1)*w+j])/2.0f;
+  //      df_b[i*w + j] = (img[i*w + j+1] - img[i*w + j-1])/2.0f;
 
   // perform Fourier transform
   if (cufftPlan1d(&plan, NX, CUFFT_R2C, BATCH) != CUFFT_SUCCESS){
@@ -247,6 +270,22 @@ int extendedCUFFT::run() {
   cudaFree(xddy);
   cudaFree(yddx);
   cudaFree(yddy);
+  cudaFree(m_aa);
+  cudaFree(m_ab);
+  cudaFree(m_ba);
+  cudaFree(m_bb);
+  cudaFree(m_haa);
+  cudaFree(m_hab);
+  cudaFree(m_hba);
+  cudaFree(m_hbb);
+  cudaFree(m_dhaada);
+  cudaFree(m_dhabda);
+  cudaFree(m_dhbada);
+  cudaFree(m_dhbbda);
+  cudaFree(m_dhaadb);
+  cudaFree(m_dhabdb);
+  cudaFree(m_dhbadb);
+  cudaFree(m_dhbbdb);
   cudaFree(res);
   cudaFree(data);
   cudaFree(odata);
@@ -422,6 +461,29 @@ static __global__ inline void diffeo_gradient_x_2d(const float* I, float* dIdx, 
       dIdx[i*w+j] = (I[i*w+j+1] - I[i*w+j-1])/2.0;
 }
 
+static __global__ inline void image_gradient_2d(const float *img, float *df_a, float *df_b, const int w, const int h) {
+  int im1 = h-1;
+  int jm1;
+  for (int i=0; i< h-1; im1=i, ++i) {
+    jm1 = w-1;
+    for (int j=0; j< w-1; ++j) {
+      df_a[i*w + j] = (img[(i+1)*w+j] - img[im1*w+j])/2.0f;
+      df_b[i*w + j] = (img[i*w + j+1] - img[i*w+jm1])/2.0f;
+      jm1 = j;
+    }
+    df_a[i*w + w-1] = (img[(i+1)*w + w-1] - img[im1*w + w-1])/2.0f;
+    df_b[i*w + w-1] = (img[i*w          ] - img[i*w   + w-2])/2.0f;
+  }
+  jm1 = w-1;
+  for (int j=0; j< w-1; ++j) {
+    df_a[(h-1)*w+j] = (img[          j  ] - img[(h-2)*w + j  ])/2.0f;
+    df_b[(h-1)*w+j] = (img[(h-1)*w + j+1] - img[(h-1)*w + jm1])/2.0f;
+    jm1 = j;
+  }
+  df_a[(h-1)*w + w-1] = (img[    w-1 ] - img[(h-2)*w + w-1])/2.0f;
+  df_b[(h-1)*w + w-1] = (img[(h-1)*w ] - img[(h-1)*w + w-2])/2.0f;
+}
+
 //static __global__ void Loop(float v0, float v1, float dv, const double v, const int s) {
 // 
 //}
@@ -493,11 +555,11 @@ static __global__ void Diffsq(float *res, const float *a, const float *b, int si
     res[i] = (a[i] - b[i])*(a[i] - b[i]);
 }
 
-static __global__ void Dotsum(float *res, const float *a, const float *b, int size) {
+static __global__ void Dotsum(float *res, const float *a, const float *b, const float *c, const float *d, int size) {
   const int numThreads = blockDim.x * gridDim.x;
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
   for (int i = threadID; i < size; i += numThreads)
-    res[i] = a[i]*a[i] + b[i]*b[i];
+    res[i] = (a[i]*b[i] + c[i]*d[i]); // * (a[i]*b[i] + c[i]*d[i]);   // Return square of ab+cd ?
 }
 
 // Real pointwise multiplication
