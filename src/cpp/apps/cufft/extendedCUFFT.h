@@ -2,6 +2,8 @@
 #include <tuple>
 #include <string>
 
+typedef float  Real;
+
 // Implements to algorithm in the paper by Modin and Karlsson (to be published).
 class extendedCUFFT final {
 public:
@@ -28,6 +30,16 @@ public:
   // epsilon - The stepsize in the gradient descent method.
   int run();
 
+  //const Real& target() const { return m_target; }
+  //const Real& source() const { return m_source; }
+  const Real* warped() const { return m_I; }
+  //const Real& phi_x() const { return m_phix; }
+  //const Real& phi_y() const { return m_phiy; }
+  const Real* phi_inv_x() const { return phiinvx; }
+  const Real* phi_inv_y() const { return phiinvy; }
+
+  //const VecDbl& energy() const { return m_E; }
+
 private:
   extendedCUFFT(const float* source, const float* target,
     float alpha, float beta, float sigma,
@@ -47,6 +59,7 @@ private:
   int m_cols = 0;
 
   const float *m_source, *m_target;
+  float *m_multipliers;
   float *I, *I0, *xphi, *yphi, *Iout;
   float *data;
   float *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;

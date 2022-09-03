@@ -12,15 +12,14 @@
 #define IMAGESIZE 16
 #define BATCH 1
 
+typedef float2 Complex;  // a pair z=(x,y) of floats, access by z.x or z.y
+
 /*
 Next steps:
   - Create .h file with class definition? 
   - Then make constructor.
-
-
 */
 
-typedef float2 Complex;
 
 static __host__ inline void create_idmap(float*, float*, const int, const int);
 
@@ -37,6 +36,7 @@ static __global__ void CreateIdentity(float*, float*, const int, const int);
 static __global__ void PointwiseScale(float*, int, float);
 static __global__ void Complex_diffsq(float*, const Complex*, const Complex*, int);
 static __global__ void ComplexPointwiseScale(Complex*, int, float);
+static __global__ void MultComplexAndReal(Complex*, Real*, const int);
 static __global__ void Diffsq(float*, const float*, const float*, int);
 static __global__ void Dotsum(float*, const float*, const float*, const float*, const float*, int);
 // Question: What is the meaning of inline?
@@ -61,9 +61,55 @@ std::tuple<std::unique_ptr<extendedCUFFT>, std::string> extendedCUFFT::create(
   return std::make_tuple(std::move(ret), "");
 }
 
+// Momentum vector
+void kvec(float* k, const int N) {
+  float step = (N-0)/float(N);  //TODO: generalize
+  int start = 0;
+  int stop = N;
+  int num = N;
+  int np1 = num + 1;
+  if (num%2==0) {
+    for (int i = 0; i < num/2; ++i)
+      k[i] = start + i * step;
+    for (int i = num/2; i < num; ++i)
+      k[i] = -stop + (i+1) * step;
+  }
+  else {
+    for (int i = 0; i < np1/2; ++i)
+      k[i] = start + i * step;
+    for (int i = np1/2; i < num; ++i)
+      k[i] = -stop + (i+1) * step;
+  }
+}
+
+// Inverse of Laplace operator + id
+void linv(float* Linv, const float* ka, const float* kb, const float alpha, const float beta, const int h, const int w) {
+  float L; // = (float*) malloc( sizeof(float)*len );
+  for (int row = 0; row < h; ++row) {
+    for (int col = 0; col < w; ++col) {
+      L = alpha + beta*beta*( ka[col]*ka[col] + kb[row]*kb[row] );
+      Linv[row*w + col] = 1.0f / L;
+    }
+  }
+}
+
+
 void extendedCUFFT::setup() {
-  const float* I0 = m_source;
-  const float* I1 = m_target;
+
+  m_rows = IMAGESIZE;
+  m_cols = IMAGESIZE;
+  m_alpha = 0.001f;
+  m_beta = 0.3f;
+  m_sigma = 0.1f;
+
+  // Create momentum grid
+  float* ka = (float*) malloc( sizeof(float)*m_cols );
+  float* kb = (float*) malloc( sizeof(float)*m_rows );
+  kvec(ka, m_cols);
+  kvec(kb, m_rows);
+  m_multipliers = (float*) malloc( sizeof(float)*m_rows*m_cols );
+  linv(m_multipliers, ka, kb, m_alpha, m_beta, m_rows, m_cols);
+
 }
 
 
@@ -72,16 +118,16 @@ int extendedCUFFT::run() {
   Basic usage of real-to-complex 1D Fourier transform.
   */
 
-  m_sigma = 0.1f;
-  const int NX = IMAGESIZE*IMAGESIZE;
+  const int NX = m_rows*m_cols;
   int w, h;
   float *I, *I0, *xphi, *yphi, *Iout;
   float *data;
   float *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;
   float *idx, *idy;
   float *res;
-  Complex *odata;
-  cufftHandle plan;
+  float* Linv;
+  Complex *odata, *odata_a, *odata_b;
+  cufftHandle plan, planback;
 
   w = IMAGESIZE;
   h = IMAGESIZE;
@@ -89,6 +135,8 @@ int extendedCUFFT::run() {
   // Allocate host memory for the signal
   float *h_signal = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   Complex *h_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+  Complex *Ja_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+  Complex *Jb_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
   idx = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   idy = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   /*
@@ -130,7 +178,9 @@ int extendedCUFFT::run() {
   cudaMalloc((void**)&xddy, sizeof(float)*NX);
   cudaMalloc((void**)&yddx, sizeof(float)*NX);
   cudaMalloc((void**)&yddy, sizeof(float)*NX);
-  cudaMalloc((void**)&m_I,  sizeof(float)*NX);
+  cudaMalloc((void**)&yddy, sizeof(float)*NX);
+  cudaMalloc((void**)&Linv, sizeof(float)*NX);
+  cudaMalloc((void**)&m_I,  sizeof(float)*NX);  // Q: is it okay to call these m_I, etc, or should we drop m_?
   cudaMalloc((void**)&m_dIda, sizeof(float)*NX);  // image gradient
   cudaMalloc((void**)&m_dIdb, sizeof(float)*NX);
   cudaMalloc((void**)&m_aa, sizeof(float)*NX);  // diffeo gradient
@@ -157,6 +207,8 @@ int extendedCUFFT::run() {
   cudaMalloc((void**)&m_Jb, sizeof(float)*NX);
   cudaMalloc((void**)&res,  sizeof(float));
   cudaMalloc((void**)&odata, sizeof(Complex)*(NX/2+1));
+  cudaMalloc((void**)&odata_a, sizeof(Complex)*(NX/2+1));
+  cudaMalloc((void**)&odata_b, sizeof(Complex)*(NX/2+1));
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to allocate memory on the GPU\n");
     return -1;
@@ -170,6 +222,7 @@ int extendedCUFFT::run() {
   cudaMemcpy(phiinvy, idy, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(data, h_signal, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(tmpx, h_signal, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(Linv, m_multipliers, sizeof(float)*NX, cudaMemcpyHostToDevice);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to copy data to GPU\n");
     return -1;	
@@ -227,10 +280,12 @@ int extendedCUFFT::run() {
 
   image_gradient_2d<<<1,NX>>>(m_I, m_dIda, m_dIdb, w, h);
 
-  FullJmap<<<1,NX>>>(m_Ja, m_Ja, m_I, I0, m_dIda, m_dIdb, m_sigma, NX);
+  FullJmap<<<1,NX>>>(m_Ja, m_Jb, m_I, I0, m_dIda, m_dIdb, m_sigma, NX);
   // returns   -(I-I0)*dI + sigma*( Jmapping );
 
   // TODO: configure smoothing routine, introduce alpha and beta, create k-vector
+  cudaMemcpy(tmpy, m_Ja, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(tmpx, m_Jb, sizeof(float)*NX, cudaMemcpyHostToDevice);
 
   // perform Fourier transform
   if (cufftPlan1d(&plan, NX, CUFFT_R2C, BATCH) != CUFFT_SUCCESS){
@@ -243,17 +298,46 @@ int extendedCUFFT::run() {
     fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
     return -1;
   }
+  if (cufftExecR2C(plan, reinterpret_cast<cufftReal *>(tmpy), reinterpret_cast<cufftComplex *>(odata_a)) != CUFFT_SUCCESS){
+    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
+    return -1;
+  }
+  if (cufftExecR2C(plan, reinterpret_cast<cufftReal *>(tmpx), reinterpret_cast<cufftComplex *>(odata_b)) != CUFFT_SUCCESS){
+    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
+    return -1;
+  }
   if (cudaDeviceSynchronize() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to synchronize\n");
     return -1;
   }
   // Divide by number of elements in data set to get back original data
   ComplexPointwiseScale<<<1, 256>>>(odata, NX/2+1, 1.0f / 2);
+  MultComplexAndReal<<<1, NX>>>(odata_a, Linv, NX/2+1); 
+  MultComplexAndReal<<<1, NX>>>(odata_b, Linv, NX/2+1);
   PointwiseScale<<<1, 256>>>(data, NX, 1.0f / 2);
   
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
     return -1;	
+  }
+
+  // TODO
+  // Inverse transform CUFFT to get back momentum mapping
+  if (cufftPlan1d(&planback, NX/2+1, CUFFT_C2R, BATCH) != CUFFT_SUCCESS){
+    fprintf(stderr, "CUFFT error: Plan creation failed");
+    return -1;
+  }
+  if (cufftExecC2R(planback, reinterpret_cast<cufftComplex *>(odata_a), reinterpret_cast<cufftReal *>(tmpy)) != CUFFT_SUCCESS){
+    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
+    return -1;
+  }
+  if (cufftExecC2R(planback, reinterpret_cast<cufftComplex *>(odata_b), reinterpret_cast<cufftReal *>(tmpx)) != CUFFT_SUCCESS){
+    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
+    return -1;
+  }
+  if (cudaGetLastError() != cudaSuccess){
+    fprintf(stderr, "Cuda error: Failed Fourier inverse transform\n");
+    return -1;
   }
   
   // Difference squared
@@ -263,7 +347,7 @@ int extendedCUFFT::run() {
     return -1;
   }
 
-  cudaMemcpy(h_result, odata, sizeof(Complex)*(NX/2+1), cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_result, odata_a, sizeof(Complex)*(NX/2+1), cudaMemcpyDeviceToHost);
   cudaMemcpy(h_signal, tmpx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
@@ -275,7 +359,7 @@ int extendedCUFFT::run() {
   for (unsigned int i = 0; i < 10; ++i) {
     printf("h_result[%d].x = %f\n", i, h_result[i].x);
   }
-   // ...and this
+  // ...and this
   for (unsigned int i = 0; i < 10; ++i) {
     printf("h_signal[%d].x = %f\n", i, h_signal[i]);
   }
@@ -297,6 +381,7 @@ int extendedCUFFT::run() {
   cudaFree(xddy);
   cudaFree(yddx);
   cudaFree(yddy);
+  cudaFree(Linv);
   cudaFree(m_I);
   cudaFree(m_dIda);
   cudaFree(m_dIdb);
@@ -325,7 +410,10 @@ int extendedCUFFT::run() {
   cudaFree(res);
   cudaFree(data);
   cudaFree(odata);
+  cudaFree(odata_a);
+  cudaFree(odata_b);
   cufftDestroy(plan);
+  cufftDestroy(planback);
 
   //exit extendedCUFFT::run
   return 0;
@@ -658,7 +746,6 @@ static __global__ inline void Jmapping(float *resa, float *resb,
 static __global__ void PointwiseScale(float *a, int size, float scale) {
   const int numThreads = blockDim.x * gridDim.x;
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
-
   for (int i = threadID; i < size; i += numThreads) {
     a[i] = RealScale(a[i], scale);
   }
@@ -668,8 +755,17 @@ static __global__ void PointwiseScale(float *a, int size, float scale) {
 static __global__ void ComplexPointwiseScale(Complex *a, int size, float scale) {
   const int numThreads = blockDim.x * gridDim.x;
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
-
   for (int i = threadID; i < size; i += numThreads) {
     a[i] = ComplexScale(a[i], scale);
   }
 }
+
+// Complex pointwise multiplication with real vector
+static __global__ void MultComplexAndReal(Complex *z, Real *a, const int size) {
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < size; i += numThreads) {
+    z[i] = ComplexScale(z[i], a[i]);
+  }
+}
+
