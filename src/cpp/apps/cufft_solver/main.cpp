@@ -23,7 +23,7 @@
 #include "apps/solver/config_solver.h"
 #include "apps/solver/examples.h"
 
-#include "apps/cufft/extendedCUFFT.h"
+#include "ddmatch_gpu/extendedCUFFT.h"
 
 
 
