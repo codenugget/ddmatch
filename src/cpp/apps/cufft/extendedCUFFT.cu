@@ -113,7 +113,7 @@ void extendedCUFFT::setup() {
 }
 
 
-int extendedCUFFT::run() {
+int extendedCUFFT::run(int niter, float epsilon) {
   /*
   Basic usage of real-to-complex 1D Fourier transform.
   */
@@ -277,8 +277,10 @@ int extendedCUFFT::run() {
        m_dhaada, m_dhabda, m_dhbada, m_dhbbda, 
        m_dhaadb, m_dhabdb, m_dhbadb, m_dhbbdb, 
        NX);
-
-  image_gradient_2d<<<1,NX>>>(m_I, m_dIda, m_dIdb, w, h);
+  
+  for (int i=0; i<niter; ++i) {
+    image_gradient_2d<<<1,NX>>>(m_I, m_dIda, m_dIdb, w, h);
+  }
 
   FullJmap<<<1,NX>>>(m_Ja, m_Jb, m_I, I0, m_dIda, m_dIdb, m_sigma, NX);
   // returns   -(I-I0)*dI + sigma*( Jmapping );

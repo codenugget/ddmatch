@@ -28,15 +28,17 @@ public:
   // niter=300, epsilon=0.1
   // niter   - Number of iterations to take.
   // epsilon - The stepsize in the gradient descent method.
-  int run();
+  int run(int niter, float epsilon);
 
-  //const Real& target() const { return m_target; }
-  //const Real& source() const { return m_source; }
-  const Real* warped() const { return m_I; }
-  //const Real& phi_x() const { return m_phix; }
-  //const Real& phi_y() const { return m_phiy; }
+  const Real* target()    const { return m_target; }
+  const Real* source()    const { return m_source; }
+  const Real* warped()    const { return m_I; }
+  const Real* phi_x()     const { return m_phix; }
+  const Real* phi_y()     const { return m_phiy; }
   const Real* phi_inv_x() const { return phiinvx; }
   const Real* phi_inv_y() const { return phiinvy; }
+
+  const int len()  const { return m_rows*m_cols; }
 
   //const VecDbl& energy() const { return m_E; }
 
@@ -50,15 +52,15 @@ private:
   }
   void setup();
 
-  bool m_compute_phi;
-
+  const float *m_source, *m_target;
   float m_alpha;
   float m_beta;
   float m_sigma;
+  bool m_compute_phi;
+
   int m_rows = 0;
   int m_cols = 0;
 
-  const float *m_source, *m_target;
   float *m_multipliers;
   float *I, *I0, *xphi, *yphi, *Iout;
   float *data;
@@ -66,6 +68,7 @@ private:
   float *idx, *idy;
   float *m_I;
   float *m_dIda, *m_dIdb;
+  float *m_phiy, *m_phix;
   float *m_aa, *m_ab, *m_ba, *m_bb;
   float *m_haa, *m_hab, *m_hba, *m_hbb;
   float *m_gaa, *m_gab, *m_gba, *m_gbb;
