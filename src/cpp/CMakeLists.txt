@@ -1,6 +1,7 @@
 add_subdirectory(apps)
 add_subdirectory(core)
 add_subdirectory(ddmatch)
+add_subdirectory(ddmatch_gpu)
 add_subdirectory(image)
 add_subdirectory(UnitTests)
 add_subdirectory(utils)

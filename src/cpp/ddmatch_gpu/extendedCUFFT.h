@@ -37,10 +37,11 @@ public:
   const Real* phi_y()     const { return m_phiy; }
   const Real* phi_inv_x() const { return phiinvx; }
   const Real* phi_inv_y() const { return phiinvy; }
+  const Real* energy()    const { return m_E; }
 
-  const int len()  const { return m_rows*m_cols; }
-
-  //const VecDbl& energy() const { return m_E; }
+  const int len()   const { return m_rows*m_cols; }
+  const int rows()  const { return m_rows; }
+  const int cols()  const { return m_cols; }
 
 private:
   extendedCUFFT(const float* source, const float* target,
@@ -62,6 +63,7 @@ private:
   int m_cols = 0;
 
   float *m_multipliers;
+  float *m_E;
   float *I, *I0, *xphi, *yphi, *Iout;
   float *data;
   float *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;
