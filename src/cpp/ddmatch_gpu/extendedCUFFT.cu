@@ -49,6 +49,7 @@ static __global__ inline void FullJmap(float*, float*, const float*, const float
 
 std::tuple<std::unique_ptr<extendedCUFFT>, std::string> extendedCUFFT::create(
     const float* source, const float* target,
+    int nrow, int ncol,
     float alpha, float beta, float sigma,
     bool compute_phi) {
   // Check input
@@ -56,7 +57,7 @@ std::tuple<std::unique_ptr<extendedCUFFT>, std::string> extendedCUFFT::create(
   if (sigma < 0)
     return std::make_tuple(nullptr, "Paramter sigma must be positive");
 
-  auto ret = std::unique_ptr<extendedCUFFT>(new extendedCUFFT(source, target, alpha, beta, sigma, compute_phi));
+  auto ret = std::unique_ptr<extendedCUFFT>(new extendedCUFFT(source, target, nrow, ncol, alpha, beta, sigma, compute_phi));
   ret->setup();
   return std::make_tuple(std::move(ret), "");
 }
@@ -95,12 +96,22 @@ void linv(float* Linv, const float* ka, const float* kb, const float alpha, cons
 
 
 void extendedCUFFT::setup() {
-
+/*
   m_rows = IMAGESIZE;
   m_cols = IMAGESIZE;
   m_alpha = 0.001f;
   m_beta = 0.3f;
   m_sigma = 0.1f;
+*/
+  m_I    = reinterpret_cast<float *>( malloc(sizeof(float)*m_rows*m_cols) );
+  m_phix = reinterpret_cast<float *>( malloc(sizeof(float)*m_rows*m_cols) );
+  m_phiy = reinterpret_cast<float *>( malloc(sizeof(float)*m_rows*m_cols) );
+  m_phiinvx = reinterpret_cast<float *>( malloc(sizeof(float)*m_rows*m_cols) );
+  m_phiinvy = reinterpret_cast<float *>( malloc(sizeof(float)*m_rows*m_cols) );
+
+  // Initialize image
+  for (int i=0; i<m_rows*m_cols; ++i)
+    m_I[i] = 1.0f;
 
   // Create momentum grid
   float* ka = (float*) malloc( sizeof(float)*m_cols );
@@ -118,8 +129,21 @@ int extendedCUFFT::run(int niter, float epsilon) {
   Basic usage of real-to-complex 1D Fourier transform.
   */
 
+  // Constants
+  int w = m_cols;
+  int h = m_rows;
   const int NX = m_rows*m_cols;
-  int w, h;
+  
+  // Declare device variables
+  float* d_I;
+  float* d_I0;
+  float* d_I1;
+  float* d_phiinva;
+  float* d_phiinvb;
+  float* d_phia;
+  float* d_phib;
+  float* d_E;
+
   float *I, *I0, *xphi, *yphi, *Iout;
   float *data;
   float *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;
@@ -129,16 +153,12 @@ int extendedCUFFT::run(int niter, float epsilon) {
   Complex *odata, *odata_a, *odata_b;
   cufftHandle plan, planback;
 
-  w = IMAGESIZE;
-  h = IMAGESIZE;
 
-  // Allocate host memory for the signal
-  float *h_signal = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  Complex *h_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
-  Complex *Ja_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
-  Complex *Jb_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+
+  // Initialize
   idx = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   idy = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
+  create_idmap(idx, idy, w, h);
   /*
   I = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   I0 = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
@@ -148,11 +168,17 @@ int extendedCUFFT::run(int niter, float epsilon) {
   }
   */
 
+  // Allocate host memory for the signal 
+  m_E = reinterpret_cast<float *>( malloc(sizeof(float)*niter) );
+  float *h_signal = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
+  Complex *h_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+  Complex *Ja_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+  Complex *Jb_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+
   // Initialize the memory for the signal
   for (unsigned int i = 0; i < NX; ++i) {
     h_signal[i] = exp(-(double)i/NX);
   }
-  create_idmap(idx, idy, w, h);
   /*
   printf("Check initialization:\n");
   printf("idx[0:10] = ");
@@ -167,6 +193,15 @@ int extendedCUFFT::run(int niter, float epsilon) {
   */
 
   // Allocate device memory
+  cudaMalloc((void**)&d_I0, sizeof(float)*NX);
+  cudaMalloc((void**)&d_I1, sizeof(float)*NX);
+  cudaMalloc((void**)&d_I,  sizeof(float)*NX);
+  cudaMalloc((void**)&d_phiinva, sizeof(float)*NX);
+  cudaMalloc((void**)&d_phiinvb, sizeof(float)*NX);
+  cudaMalloc((void**)&d_phia, sizeof(float)*NX);
+  cudaMalloc((void**)&d_phib, sizeof(float)*NX);
+  cudaMalloc((void**)&d_E, sizeof(float)*niter);
+  
   cudaMalloc((void**)&I,  sizeof(float)*NX);
   cudaMalloc((void**)&I0, sizeof(float)*NX);
   cudaMalloc((void**)&data, sizeof(float)*NX);
@@ -180,7 +215,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaMalloc((void**)&yddy, sizeof(float)*NX);
   cudaMalloc((void**)&yddy, sizeof(float)*NX);
   cudaMalloc((void**)&Linv, sizeof(float)*NX);
-  cudaMalloc((void**)&m_I,  sizeof(float)*NX);  // Q: is it okay to call these m_I, etc, or should we drop m_?
+  cudaMalloc((void**)&d_I,  sizeof(float)*NX);  // Q: is it okay to call these m_I, etc, or should we drop m_?
   cudaMalloc((void**)&m_dIda, sizeof(float)*NX);  // image gradient
   cudaMalloc((void**)&m_dIdb, sizeof(float)*NX);
   cudaMalloc((void**)&m_aa, sizeof(float)*NX);  // diffeo gradient
@@ -217,7 +252,11 @@ int extendedCUFFT::run(int niter, float epsilon) {
   // Copy signal to device
   cudaMemcpy(I,  idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(I0, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(m_I, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);       //TODO: read from image
+  cudaMemcpy(d_I0, m_source, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_I1, m_target, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_I,  m_source, sizeof(float)*NX, cudaMemcpyHostToDevice);       //TODO: read from image
+  cudaMemcpy(d_phiinva, idy, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_phiinvb, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(phiinvx, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(phiinvy, idy, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(data, h_signal, sizeof(float)*NX, cudaMemcpyHostToDevice);
@@ -230,15 +269,15 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
   // initialize itentity mapping
   // TODO: copy the ready-made idx, idy to GPU
-  CreateIdentity<<<1, 256>>>(tmpx, tmpy, w, h);
+  CreateIdentity<<<1, NX>>>(tmpx, tmpy, w, h);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to initialize diffeomorphisms on GPU\n");
     return -1;
   }
 
-  image_compose_2d<<<1,NX>>>(I, tmpx, tmpy, I0, w, h);
+  image_compose_2d<<<1,1>>>(d_I0, d_phiinvb, d_phiinva, d_I, w, h);
   if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU\n");
+    fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU 1\n");
     return -1;
   }
 
@@ -279,10 +318,10 @@ int extendedCUFFT::run(int niter, float epsilon) {
        NX);
   
   for (int i=0; i<niter; ++i) {
-    image_gradient_2d<<<1,NX>>>(m_I, m_dIda, m_dIdb, w, h);
+    image_gradient_2d<<<1,NX>>>(d_I, m_dIda, m_dIdb, w, h);
   }
 
-  FullJmap<<<1,NX>>>(m_Ja, m_Jb, m_I, I0, m_dIda, m_dIdb, m_sigma, NX);
+  FullJmap<<<1,NX>>>(m_Ja, m_Jb, d_I, I0, m_dIda, m_dIdb, m_sigma, NX);
   // returns   -(I-I0)*dI + sigma*( Jmapping );
 
   // TODO: configure smoothing routine, introduce alpha and beta, create k-vector
@@ -366,6 +405,23 @@ int extendedCUFFT::run(int niter, float epsilon) {
     printf("h_signal[%d].x = %f\n", i, h_signal[i]);
   }
   
+  cudaMemcpy(m_I, d_I, sizeof(float)*NX, cudaMemcpyDeviceToHost);
+  //cudaMemcpy(h_signal, tmpx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
+  if (cudaGetLastError() != cudaSuccess){
+    fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
+    return -1;
+  }
+
+/* ---from header---
+  const Real* target()    const { return m_target; }   //const
+  const Real* source()    const { return m_source; }   //const 
+  const Real* warped()    const { return m_I; }        // COPY THIS
+  const Real* phi_x()     const { return m_phix; }     // COPY THIS
+  const Real* phi_y()     const { return m_phiy; }     // COPY THIS
+  const Real* phi_inv_x() const { return phiinvx; }    // COPY THIS
+  const Real* phi_inv_y() const { return phiinvy; }    // COPY THIS
+  const Real* energy()    const { return m_E; }        // COPY THIS
+*/
 
   // cleanup memory
   free(h_signal);
@@ -373,6 +429,14 @@ int extendedCUFFT::run(int niter, float epsilon) {
   free(idx);
   free(idy);
   //free(m_sigma);
+  cudaFree(d_I0);
+  cudaFree(d_I1);
+  cudaFree(d_I);
+  cudaFree(d_phiinva);
+  cudaFree(d_phiinvb);
+  cudaFree(d_phia);
+  cudaFree(d_phib);
+  cudaFree(d_E);
   cudaFree(I);
   cudaFree(I0);
   cudaFree(tmpx);
@@ -384,7 +448,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaFree(yddx);
   cudaFree(yddy);
   cudaFree(Linv);
-  cudaFree(m_I);
+  cudaFree(d_I);
   cudaFree(m_dIda);
   cudaFree(m_dIdb);
   cudaFree(m_aa);
@@ -485,12 +549,34 @@ static __device__ __host__ inline void periodic_1d_shift(int v0, int v1, int v0_
 }
 
 static __global__ inline void image_compose_2d(const float *I, const float *xphi, const float *yphi, float *Iout, const int w, const int h) {
-  int x0, x1, y0, y1;
+  const int size = w*h;
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  int x, y, x0, x1, y0, y1;
   float dx, dy;
+  for (int i=threadID; i<size; i+=numThreads) {
+    x = threadID / w;  // row
+    y = threadID % w;  // col
+    periodic_1d(x0, x1, dx, xphi[y*w+x], w);
+    periodic_1d(y0, y1, dy, yphi[y*w+x], h);
+    float val = 0;
+    val += I[y0*w+x0] * (1-dx) * (1-dy);
+    val += I[y0*w+x1] * dx     * (1-dy);
+    val += I[y1*w+x0] * (1-dx) * dy;
+    val += I[y1*w+x1] * dx     * dy;
+    Iout[y*w+x] = val;
+  }
+  /*
   for(int py = 0; py < h; ++py) {
     for(int px = 0; px < w; ++px) {
-      periodic_1d(x0, x1, dx, xphi[py*w+px], w);
-      periodic_1d(y0, y1, dy, yphi[py*w+px], h);
+      x0 = px;
+      x1 = x0;
+      dx = 0;
+      y0 = px;
+      y1 = x0;
+      dy = 0;
+      //periodic_1d(x0, x1, dx, xphi[py*w+px], w);
+      //periodic_1d(y0, y1, dy, yphi[py*w+px], h);
 
       float val = 0;
       val += I[y0*w+x0] * (1-dx) * (1-dy);
@@ -498,17 +584,9 @@ static __global__ inline void image_compose_2d(const float *I, const float *xphi
       val += I[y1*w+x0] * (1-dx) * dy;
       val += I[y1*w+x1] * dx     * dy;
       Iout[py*w+px] = val;
-
-      /*
-      int x0_idx = int(xphi[py][px]);
-      int y0_idx = int(yphi[py][px]);
-      // QUESTION: why add to index here and not int x1_idx = int(xphi->get(px+1, py  , 0))?
-      int x1_idx = x0_idx + 1;
-      // QUESTION: why add to index here and not int y1_idx = int(xphi->get(px  , py+1, 0))?
-      int y1_idx = y0_idx + 1;
-      */
     }
   }
+  */
 }
 
 static __global__ inline void diffeo_compose_2d(

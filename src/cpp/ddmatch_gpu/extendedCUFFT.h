@@ -22,6 +22,7 @@ public:
   // second in tuple is a message (usually descriptive error state)
   static std::tuple<std::unique_ptr<extendedCUFFT>, std::string> create(
     const float* source, const float* target,
+    int nrow, int ncol, 
     float alpha, float beta, float sigma,
     bool compute_phi);
 
@@ -35,8 +36,8 @@ public:
   const Real* warped()    const { return m_I; }
   const Real* phi_x()     const { return m_phix; }
   const Real* phi_y()     const { return m_phiy; }
-  const Real* phi_inv_x() const { return phiinvx; }
-  const Real* phi_inv_y() const { return phiinvy; }
+  const Real* phi_inv_x() const { return m_phiinvx; }
+  const Real* phi_inv_y() const { return m_phiinvy; }
   const Real* energy()    const { return m_E; }
 
   const int len()   const { return m_rows*m_cols; }
@@ -44,33 +45,35 @@ public:
   const int cols()  const { return m_cols; }
 
 private:
-  extendedCUFFT(const float* source, const float* target,
+  extendedCUFFT(const float* source, const float* target, int nrow, int ncol,
     float alpha, float beta, float sigma,
     bool compute_phi) :
-    m_source(source), m_target(target), m_alpha(alpha), m_beta(beta), m_sigma(sigma),
+    m_source(source), m_target(target), m_rows(ncol), m_cols(ncol), m_alpha(alpha), m_beta(beta), m_sigma(sigma),
     m_compute_phi(compute_phi)
   {
   }
   void setup();
 
-  const float *m_source, *m_target;
+  const float *m_target, *m_source;
+  float *m_I;
+  float *m_phix, *m_phiy;
+  float *m_phiinvx, *m_phiinvy;
+  float *m_E;
+  int m_rows, m_cols;
+
   float m_alpha;
   float m_beta;
   float m_sigma;
   bool m_compute_phi;
 
-  int m_rows = 0;
-  int m_cols = 0;
-
+  // Helper variables
+  // Q: Why declare these here and not in the .cu file?
   float *m_multipliers;
-  float *m_E;
   float *I, *I0, *xphi, *yphi, *Iout;
   float *data;
   float *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;
   float *idx, *idy;
-  float *m_I;
   float *m_dIda, *m_dIdb;
-  float *m_phiy, *m_phix;
   float *m_aa, *m_ab, *m_ba, *m_bb;
   float *m_haa, *m_hab, *m_hba, *m_hbb;
   float *m_gaa, *m_gab, *m_gba, *m_gbb;

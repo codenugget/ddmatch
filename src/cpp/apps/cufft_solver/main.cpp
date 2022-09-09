@@ -47,7 +47,7 @@ bool save_image(const float* arr, const int w, const int h, const fs::path& file
   for (int r=0; r<h; ++r) {
     for (int c=0; c<w; ++c) {
       grid[r][c] = (double)arr[r*w+c];
-      std::cout << "At (" << r << "," << c << ") : " << (double)arr[r*w+c] << "\n";
+      //std::cout << "At (" << r << "," << c << ") : " << (double)arr[r*w+c] << "\n";
       //img.set(c, r, color_layer, grid[r*w+c]);
     }
   }
@@ -59,10 +59,8 @@ bool save_image(const float* arr, const int w, const int h, const fs::path& file
   return ok;
 }
 
-void save_energy(extendedCUFFT* dfm, const fs::path& folder_path) {
+void save_energy(const float* E, const int n, const fs::path& folder_path) {
   const fs::path& filename = folder_path / "energy.csv";
-  auto E = dfm->energy(); // float*
-  auto n = dfm->len();
   std::cout << "Saving: " << filename << "\n";
   std::ofstream thisfile(filename);
   for (int i = 0; i < n; i++) {
@@ -70,21 +68,129 @@ void save_energy(extendedCUFFT* dfm, const fs::path& folder_path) {
   }
 }
 
-void run_and_save_example(float* I0, float* I1, config_solver::ConfigRun& cfg) {
+
+
+void drawline(dGrid& target, double r0, double c0, double r1, double c1, double scale) {
+  // bresenham below
+  int x1 = scale*c0, y1 = scale*r0, x2 = scale*c1, y2 = scale*r1;
+  {
+  const bool steep = (fabs(y2 - y1) > fabs(x2 - x1));
+  if(steep)
+  {
+    std::swap(x1, y1);
+    std::swap(x2, y2);
+  }
+ 
+  if(x1 > x2)
+  {
+    std::swap(x1, x2);
+    std::swap(y1, y2);
+  }
+ 
+  const float dx = x2 - x1;
+  const float dy = fabs(y2 - y1);
+ 
+  float error = dx / 2.0f;
+  const int ystep = (y1 < y2) ? 1 : -1;
+  int y = (int)y1;
+ 
+  const int maxX = (int)x2;
+ 
+  for(int x=(int)x1; x<=maxX; x++)
+  {
+    if(steep)
+    {
+      if (x >= 0 && x < target.cols() &&
+          y >= 0 && y < target.rows()) {
+        target[x][y] = 1.0;
+          }
+    }
+    else
+    {
+      if (x >= 0 && x < target.cols() &&
+          y >= 0 && y < target.rows()) {
+        target[y][x] = 1.0;
+          }
+    }
+ 
+    error -= dy;
+    if(error < 0)
+    {
+        y += ystep;
+        error += dx;
+    }
+  }
+  }
+}
+
+float* combine_warp(const float* dx, const float* dy, const int nrow, const int ncol,
+                   const int cDivider, const double cResolutionMultiplier) {
+  // xphi[:,skip::skip]      - rows: keep all rows,                                         columns: start at skip, loop until end and increment with skip
+  // xphi[skip::skip, ::1]   - rows: start at skip, loop until end and increment with skip, columns: keep all columns
+  // xphi[skip::skip, ::1].T - T is for transpose
+  // for now rows/cols are the same
+  int skip = cDivider > 0 ? std::max<int>(nrow/cDivider, 1) : 1;
+  float x0 = dx[0];
+  float y0 = dy[0];
+  //double padd = x0 > 0 ? 1.2*x0 : -1.2*x0;         // assume cols=rows
+  dGrid ret(cResolutionMultiplier*nrow, cResolutionMultiplier*ncol, 0.0);
+
+  for (int r0 = skip; r0 < nrow; r0 += skip) {
+    for (int c0 = skip; c0 < ncol; c0 += skip) {
+      int r1 = r0 + skip;
+      int c1 = c0 + skip;
+      float dx00 = dx[r0*ncol+c0]-x0;
+      float dy00 = dy[r0*ncol+c0]-y0;
+
+      bool cok = c1 < ncol;
+      bool rok = r1 < nrow;
+
+      if (cok) {
+        float dx01 = dx[r0*ncol+c1]-x0;
+        float dy01 = dy[r0*ncol+c1]-y0;
+        drawline(ret, dy00, dx00, dy01, dx01, cResolutionMultiplier);
+      }
+      if (rok) {
+        float dx10 = dx[r1*ncol+c0]-x0;
+        float dy10 = dy[r1*ncol+c0]-y0;
+        drawline(ret, dy00, dx00, dy10, dx10, cResolutionMultiplier);
+      }
+    }
+  }
+  float *fret = reinterpret_cast<float *>( malloc(sizeof(float)*nrow*ncol) );
+  for (int r=0; r<nrow; ++r) {
+    for (int c=0; c<ncol; ++c) {
+      fret[r*ncol+c] = ret[c][r];
+    }
+  }
+  return fret;
+}
+
+
+void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::ConfigRun& cfg) {
   std::cout << "Initializing: " << cfg.output_folder_ << "\n";
+  float alpha = (float) cfg.alpha_;
+  float beta  = (float) cfg.beta_;
+  float sigma = (float) cfg.sigma_;
+  const int num_iters = cfg.iterations_;
+  float epsilon = (float)cfg.epsilon_; // step size
+  int nrow = I0.rows();
+  int ncol = I0.cols();
+
+  float* source = reinterpret_cast<float *>( malloc(sizeof(float)*nrow*ncol) );
+  float* target = reinterpret_cast<float *>( malloc(sizeof(float)*nrow*ncol) );
+  auto thisI0 = I0.data();
+  auto thisI1 = I1.data();
+  // Copy values
+  for (int i=0; i<NX; ++i) {
+      source[i] = thisI0[i];
+      target[i] = thisI1[i];
+  }
 
   bool compute_phi = cfg.compute_phi_;
-  //double alpha = cfg.alpha_;
-  //double beta  = cfg.beta_;
-  //double sigma = cfg.sigma_;
 
-  float alpha = 0.001;
-  float beta = 0.3;
-  float sigma = 0.1;
-  int num_iters = cfg.iterations_;
-  float epsilon = (float)cfg.epsilon_; // step size
 
-  auto [dfm, msg] = extendedCUFFT::create(I0, I1, alpha, beta, sigma, compute_phi);
+  auto [dfm, msg] = extendedCUFFT::create(source, target, nrow, ncol, alpha, beta, sigma, compute_phi);
   if (!dfm) {
     std::cerr << "ERROR: " << msg << "\n";
     return;
@@ -99,7 +205,23 @@ void run_and_save_example(float* I0, float* I1, config_solver::ConfigRun& cfg) {
   fs::create_directories(steps_path);
 
   dfm->run(num_iters, epsilon);
-  save_image(dfm->target(), dfm->cols(), dfm->rows(), overview_path / ".png");
+
+  save_energy(dfm->energy(), num_iters, overview_path);
+
+  // NOTE: define what range we regard to be "almost 0" (cZeroLimit)
+  const double cZeroLimit = 1e-3;
+
+  save_image(dfm->target(), dfm->cols(), dfm->rows(), overview_path / "target.png");
+  save_image(dfm->source(), dfm->cols(), dfm->rows(), overview_path / "template.png");
+  save_image(dfm->warped(), dfm->cols(), dfm->rows(), overview_path / "warped.png");
+
+  double scale_image = 4.0;
+  auto warped = combine_warp(dfm->phi_x(), dfm->phi_y(), dfm->rows(), dfm->cols(), 64, scale_image);
+  save_image(warped, dfm->cols(), dfm->rows(), overview_path / "forward_warp.png");
+  std::cout << "Figures saved.1\n";
+  warped = combine_warp(dfm->phi_inv_x(), dfm->phi_inv_y(), dfm->rows(), dfm->cols(), 64, scale_image);
+  save_image(warped, dfm->cols(), dfm->rows(), overview_path / "backward_warp.png");
+  std::cout << "Figures saved.\n";
 }
 
 /*
@@ -119,19 +241,7 @@ void run_solver(config_solver::ConfigRun& cfg) {
     std::cout << msg << "\n";
     if (!ok)
       return;
-
-  // Send float pointers to run_and_save_example
-  float* source = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  float* target = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  auto thisI0 = I0.data();
-  auto thisI1 = I1.data();
-  // Copy values
-  for (int i=0; i<NX; ++i) {
-      source[i] = thisI0[i];
-      target[i] = thisI1[i];
-  }
-
-  run_and_save_example(source, target, cfg);
+  run_and_save_example(I0, I1, cfg);
 }
 
 void run_solver(config_solver::ConfigSolver& cfg) {
