@@ -41,7 +41,7 @@ namespace ImageLib
       flip_vertically(img->width(), img->height(), img->components(), tmp->data());
       i = tmp.get();
     }
-    auto pos = filename.rfind('.');
+    auto pos = filename.rfind('.');  //TODO: handle exeption if there is no dot
     std::string ext = filename.substr(pos);
     for (auto& c : ext)
       c = static_cast<char>(::tolower(c));
