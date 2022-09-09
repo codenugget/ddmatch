@@ -34,19 +34,26 @@
 
 namespace fs = std::filesystem;
 
-bool save_image(const float* grid, const int w, const int h){//, const fs::path& filename) {
+bool save_image(const float* arr, const int w, const int h, const fs::path& filename) {
   const double cZeroLimit = 1e-3;
-  //std::cout << "Saving: " << filename << "\n";
+  std::cout << "Saving: " << filename << "\n";
   // TODO: image library that can use float pointers
   int num_components = 1;
-  auto img = ImageLib::fImage(w, h, num_components); //, utils::EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  dGrid grid(h, w, 0.0); 
+  //auto img = ImageLib::fImage(w, h, num_components); //, utils::EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  //auto tmp_grid = utils::to_grid(&tmp_img, utils::EConversion::Linearize_To_0_1_Range);
+  //auto img = utils::to_image(tmp_grid, utils::EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  int color_layer = 0;
   for (int r=0; r<h; ++r) {
     for (int c=0; c<w; ++c) {
-      img.set(c, r, 0, grid[r*w+c]);
+      grid[r][c] = (double)arr[r*w+c];
+      std::cout << "At (" << r << "," << c << ") : " << (double)arr[r*w+c] << "\n";
+      //img.set(c, r, color_layer, grid[r*w+c]);
     }
   }
-  //const auto [ok, msg] = ImageLib::save(img.get(), filename.string());
-  bool ok = false;
+  auto img = utils::to_image(grid, utils::EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  std::cout << "Converting to image: grid size " << w << "x" << h <<"\n";
+  const auto [ok, msg] = ImageLib::save(img.get(), filename.string());
   if (!ok)
     std::cerr << "ERROR: " << "need ImageLib for GPU" << "\n";
   return ok;
@@ -83,8 +90,16 @@ void run_and_save_example(float* I0, float* I1, config_solver::ConfigRun& cfg) {
     return;
   }
   std::cout << msg << "\n";
+
+  std::cout << "Running: " << cfg.output_folder_ << "\n";
+  fs::path root_path(cfg.output_folder_);
+  fs::path overview_path = root_path / "overview";
+  fs::path steps_path = root_path / "steps";
+  fs::create_directories(overview_path);
+  fs::create_directories(steps_path);
+
   dfm->run(num_iters, epsilon);
-  save_image(dfm->target(), dfm->cols(), dfm->rows());
+  save_image(dfm->target(), dfm->cols(), dfm->rows(), overview_path / ".png");
 }
 
 /*
@@ -100,19 +115,21 @@ int main(int argc, char** argv)
 
 void run_solver(config_solver::ConfigRun& cfg) {
   const auto [ok, I0, I1, msg] = load_density_maps(cfg);
-  float* source = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  float* target = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  auto thisI0 = I0.data();
-  auto thisI1 = I1.data();
-
-  for (int i=0; i<NX; ++i) {
-      source[i] = thisI0[i];
-      target[i] = thisI1[i];
-  }
   if (!msg.empty())
     std::cout << msg << "\n";
     if (!ok)
       return;
+
+  // Send float pointers to run_and_save_example
+  float* source = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
+  float* target = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
+  auto thisI0 = I0.data();
+  auto thisI1 = I1.data();
+  // Copy values
+  for (int i=0; i<NX; ++i) {
+      source[i] = thisI0[i];
+      target[i] = thisI1[i];
+  }
 
   run_and_save_example(source, target, cfg);
 }
