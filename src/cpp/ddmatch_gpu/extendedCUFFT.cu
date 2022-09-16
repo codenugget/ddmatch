@@ -10,6 +10,7 @@
 #include "extendedCUFFT.h"
 
 #define IMAGESIZE 16
+#define THREADS_PER_BLOCK 32
 #define BATCH 1
 
 typedef float2 Complex;  // a pair z=(x,y) of floats, access by z.x or z.y
@@ -300,8 +301,12 @@ int extendedCUFFT::run(int niter, float epsilon) {
     printf("h_idy[%d] = %f\n", i, h_idy[i]);
   }
   */
-  dim3 blocks(m_rows,m_cols);
-  dim3 threads(1,1);
+  // TODO: manage threads and blocks in json configuration 
+  int num_threads = 16;
+  int num_blocks = (num_threads-1 + THREADS_PER_BLOCK)/THREADS_PER_BLOCK;
+  dim3 blocks(num_blocks,num_blocks);     // alternatively: (m_rows,m_cols)
+  dim3 threads(num_threads,num_threads);  // alternatively: (1,1)
+
   image_compose_2d<<<blocks,threads>>>(d_I0, d_phiinvb, d_phiinva, d_I, w, h);
   //cudaDeviceSynchronize();
   if (cudaGetLastError() != cudaSuccess){
@@ -675,7 +680,6 @@ static __global__ inline void diffeo_compose_2d(
   int x0, x1, x0_shift, x1_shift;
   int y0, y1, y0_shift, y1_shift;
   float dx, dy;
-/*
   int x = threadIdx.x + blockIdx.x * blockDim.x;
   int y = threadIdx.y + blockIdx.y * blockDim.y;
   int offset = x + y * blockDim.x * gridDim.x;    // col + row * width
@@ -694,8 +698,7 @@ static __global__ inline void diffeo_compose_2d(
   val += (ypsi[y1*w+x0] + y1_shift) * (1.-dx) * dy;
   val += (ypsi[y1*w+x1] + y1_shift) * dx      * dy;
   yout[y*w+x] = val;
-*/
-
+ /*
   for(int i = 0; i < h; ++i) {
     for(int j = 0; j < w; ++j) {
       periodic_1d_shift(x0, x1, x0_shift, x1_shift, dx, xphi[i*w+j], w);
@@ -714,11 +717,30 @@ static __global__ inline void diffeo_compose_2d(
       yout[i*w+j] = val;
     }
   }
+ */
 }
 
 static __global__ inline void diffeo_gradient_y_2d(const float* I, float* dIdx, float* dIdy, const int w, const int h) {
   //if (!I.is_same_shape(dIdx) or !I.is_same_shape(dIdy))
   //  return false;
+
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int offset = col + row * blockDim.x * gridDim.x;    // col + row * width
+
+  if ( row == 0 )
+    dIdy[offset] = (I[1*w      +col] - I[(h-1)*w  +col] + h)/2.0;
+  if ( row == (h-1) )
+    dIdy[offset] = (I[0*w      +col] - I[(h-2)*w  +col] + h)/2.0;
+  else
+    dIdy[offset] = (I[(row+1)*w+col] - I[(row-1)*w+col]    )/2.0;
+  if ( col == 0 )
+    dIdx[offset] = (I[row*w    +1] - I[row*w  +w-1])/2.0;
+  if ( col == (w-1) )
+    dIdx[offset] = (I[row*w  +w-2] - I[row*w    +0])/2.0;
+  else
+    dIdx[offset] = (I[row*w+col+1] - I[row*w+col-1])/2.0;
+  /*
   for (int j = 0; j < w; ++j) {
     dIdy[        j] = (I[1*w+j] - I[(h-1)*w+j] + h)/2.0; // TODO: verify h!
     dIdy[(h-1)*w+j] = (I[0*w+j] - I[(h-2)*w+j] + h)/2.0; // TODO: verify h!
@@ -727,16 +749,14 @@ static __global__ inline void diffeo_gradient_y_2d(const float* I, float* dIdx, 
     for (int j = 0; j < w; ++j)
       dIdy[i*w+j] = (I[(i+1)*w+j] - I[(i-1)*w+j]) / 2.0;
 
-  // TODO: investigate if there is some boundary calculation missing for dIdx
-  //       i.e. where is dIdx[.][.] = (... + w)/2?
-  //       Maybe because we're evaluating the "gradient_*y*"?
   for (int i = 0; i < h; ++i) {
-    dIdx[i      ] = (I[i*w+1] - I[i*w+w-1])/2.0;
+    dIdx[i*w    ] = (I[i*w+1] - I[i*w+w-1])/2.0;
     dIdx[i*w+w-1] = (I[i*w  ] - I[i*w+w-2])/2.0;
   }
   for(int j = 1; j < w-1; ++j)
     for(int i = 0; i < h; ++i)
       dIdx[i*w+j] = (I[i*w+j+1] - I[i*w+j-1])/2.0;
+  */
 }
 
 static __global__ inline void diffeo_gradient_x_2d(const float* I, float* dIdx, float* dIdy, const int w, const int h) {
@@ -751,7 +771,7 @@ static __global__ inline void diffeo_gradient_x_2d(const float* I, float* dIdx, 
       dIdy[i*w+j] = (I[(i+1)*w+j] - I[(i-1)*w+j]) / 2.0;
 
   for (int i = 0; i < h; ++i) {
-    dIdx[i      ] = (I[i*w+1] - I[i*w+w-1] + w)/2.0;
+    dIdx[i*w    ] = (I[i*w+1] - I[i*w+w-1] + w)/2.0;
     dIdx[i*w+w-1] = (I[i*w  ] - I[i*w+w-2] + w)/2.0;
   }
   for(int j = 1; j < w-1; ++j)
