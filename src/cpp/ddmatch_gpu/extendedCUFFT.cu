@@ -37,9 +37,11 @@ static __device__ __host__ inline void periodic_1d_shift(int, int, int, int, flo
 //static __global__ void Loop(float, float, float, const double, const int);
 static __global__ void CreateIdentity(float*, float*);
 static __global__ void PointwiseScale(float*, int, float);
+static __global__ void PointwiseDiff(float*, const float*, const float*, const int);
 static __global__ void Complex_diffsq(float*, const Complex*, const Complex*, int);
 static __global__ void ComplexPointwiseScale(Complex*, int, float);
 static __global__ void MultComplexAndReal(Complex*, Real*, const int);
+static __global__ void Norm2(float, const float*, const float*, const int);
 static __global__ void Diffsq(float*, const float*, const float*, int);
 static __global__ void Dotsum(float*, const float*, const float*, const float*, const float*, int);
 // Question: What is the meaning of inline?
@@ -263,6 +265,8 @@ int extendedCUFFT::run(int niter, float epsilon) {
   // Copy signal to device
   cudaMemcpy(I,  idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(I0, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_idy, idy, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_idx, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(d_I0, m_source, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(d_I1, m_target, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(d_I,  m_source, sizeof(float)*NX, cudaMemcpyHostToDevice);       //TODO: read from image
@@ -306,6 +310,10 @@ int extendedCUFFT::run(int niter, float epsilon) {
   int num_blocks = (num_threads-1 + THREADS_PER_BLOCK)/THREADS_PER_BLOCK;
   dim3 blocks(num_blocks,num_blocks);     // alternatively: (m_rows,m_cols)
   dim3 threads(num_threads,num_threads);  // alternatively: (1,1)
+  if ( num_threads >= NX ) {
+    fprintf(stderr, "ERROR * * * Number of threads larger than the number of elements\n");
+    return -1;
+  }
 
   image_compose_2d<<<blocks,threads>>>(d_I0, d_phiinvb, d_phiinva, d_I, w, h);
   //cudaDeviceSynchronize();
@@ -314,9 +322,9 @@ int extendedCUFFT::run(int niter, float epsilon) {
     return -1;
   }
 
-  diffeo_gradient_x_2d<<<1,1>>>(phiinvx, xddx, xddy, w, h);
-  diffeo_gradient_y_2d<<<1,1>>>(phiinvy, yddx, yddy, w, h);
-  image_compose_2d<<<1,1>>>(I, tmpx, tmpy, I0, w, h);
+  diffeo_gradient_x_2d<<<blocks,threads>>>(phiinvx, xddx, xddy, w, h);
+  diffeo_gradient_y_2d<<<blocks,threads>>>(phiinvy, yddx, yddy, w, h);
+  //image_compose_2d<<<blocks,threads>>>(I, tmpx, tmpy, I0, w, h);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU\n");
     return -1;
@@ -327,36 +335,45 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
   diffeo_gradient_x_2d<<<1,1>>>(phiinvx, m_bb, m_ba, w, h);
   diffeo_gradient_y_2d<<<1,1>>>(phiinvy, m_ab, m_aa, w, h);
-
-  Dotsum<<<1,1>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);   //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
-  Dotsum<<<1,1>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
-  Dotsum<<<1,1>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
-  Dotsum<<<1,1>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
+*/
+  //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
+  Dotsum<<<num_threads,1>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);  // for now, no blocks   
+  Dotsum<<<num_threads,1>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
+  Dotsum<<<num_threads,1>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
+  Dotsum<<<num_threads,1>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
   //Dotsum(float *res, const float *a, const float *b, int size) {
   //   return res[i] = a[i]*a[i] + b[i]*b[i];
-
-  image_gradient_2d<<<1,1>>>(m_haa, m_dhaada, m_dhaadb, w, h);
-  image_gradient_2d<<<1,1>>>(m_hab, m_dhabda, m_dhabdb, w, h);
-  image_gradient_2d<<<1,1>>>(m_hba, m_dhbada, m_dhbadb, w, h);
-  image_gradient_2d<<<1,1>>>(m_hbb, m_dhbbda, m_dhbbdb, w, h);
+  image_gradient_2d<<<blocks,threads>>>(m_haa, m_dhaada, m_dhaadb, w, h);
+  image_gradient_2d<<<blocks,threads>>>(m_hab, m_dhabda, m_dhabdb, w, h);
+  image_gradient_2d<<<blocks,threads>>>(m_hba, m_dhbada, m_dhbadb, w, h);
+  image_gradient_2d<<<blocks,threads>>>(m_hbb, m_dhbbda, m_dhbbdb, w, h);
   // static __global__ inline void image_gradient_2d(const float *img, float *df_a, float *df_b, const int w, const int h) {
   //      df_a[i*w + j] = (img[(i+1)*w+j] - img[(i-1)*w+j])/2.0f;
   //      df_b[i*w + j] = (img[i*w + j+1] - img[i*w + j-1])/2.0f;
 
-  Jmapping<<<1,NX>>>(m_Ja, m_Jb, 
+
+  Jmapping<<<num_threads,1>>>(m_Ja, m_Jb, 
        m_haa,    m_hab,    m_hba,    m_hbb, 
        m_gaa,    m_gab,    m_gba,    m_gbb, 
        m_dhaada, m_dhabda, m_dhbada, m_dhbbda, 
        m_dhaadb, m_dhabdb, m_dhbadb, m_dhbbdb, 
        NX);
-  
-  for (int i=0; i<niter; ++i) {
-    image_gradient_2d<<<1,1>>>(d_I, m_dIda, m_dIdb, w, h);
-  }
 
-  FullJmap<<<1,1>>>(m_Ja, m_Jb, d_I, I0, m_dIda, m_dIdb, m_sigma, NX);
+  image_gradient_2d<<<blocks,threads>>>(d_I, m_dIda, m_dIdb, w, h);
+
+  FullJmap<<<num_threads,1>>>(m_Ja, m_Jb, d_I, I0, m_dIda, m_dIdb, m_sigma, NX);
   // returns   -(I-I0)*dI + sigma*( Jmapping );
 
+  PointwiseScale<<<num_threads,1>>>(m_Ja, NX, epsilon);
+  PointwiseScale<<<num_threads,1>>>(m_Jb, NX, epsilon);
+  if (cudaGetLastError() != cudaSuccess){
+    fprintf(stderr, "CUFFT error: Scaling failed successfully\n");
+    return -1;
+  }
+
+  PointwiseDiff<<<num_threads,1>>>(d_phiinva, d_idy, m_Ja, NX);
+  PointwiseDiff<<<num_threads,1>>>(d_phiinvb, d_idx, m_Jb, NX);
+ /*
   // TODO: configure smoothing routine, introduce alpha and beta, create k-vector
   cudaMemcpy(tmpy, m_Ja, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(tmpx, m_Jb, sizeof(float)*NX, cudaMemcpyHostToDevice);
@@ -421,11 +438,16 @@ int extendedCUFFT::run(int niter, float epsilon) {
   //  return -1;
   //}
 */
+
+ // TODO
+  //Norm2<<<num_threads,1>>>(d_E[k], d_I, d_I0, NX);
   
   cudaDeviceSynchronize();
 
   cudaMemcpy(h_idy, d_phiinva, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(h_idx, d_phiinvb, sizeof(float)*NX, cudaMemcpyDeviceToHost);
+  cudaMemcpy(m_phiinvy, d_phiinva, sizeof(float)*NX, cudaMemcpyDeviceToHost);
+  cudaMemcpy(m_phiinvx, d_phiinvb, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(h_result, odata_a, sizeof(Complex)*(NX/2+1), cudaMemcpyDeviceToHost);
   cudaMemcpy(h_signal, tmpx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   if (cudaGetLastError() != cudaSuccess){
@@ -456,6 +478,8 @@ int extendedCUFFT::run(int niter, float epsilon) {
     fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
     return -1;
   }
+
+
 
 /* ---from header---
   const Real* target()    const { return m_target; }   //const
@@ -615,9 +639,6 @@ static __global__ inline void image_compose_2d(const float *I, const float *xphi
   int x = threadIdx.x + blockIdx.x * blockDim.x;
   int y = threadIdx.y + blockIdx.y * blockDim.y;
   int offset = x + y * blockDim.x * gridDim.x;    // col + row * width
-  //int x = blockIdx.x;
-  //int y = blockIdx.y;
-  //int offset = x + y * gridDim.x;
 
   periodic_1d(x0, x1, dx, xphi[offset], w);
   periodic_1d(y0, y1, dy, yphi[offset], h);
@@ -627,45 +648,6 @@ static __global__ inline void image_compose_2d(const float *I, const float *xphi
   val += I[y1*w+x0] * (1-dx) * dy;
   val += I[y1*w+x1] * dx     * dy;
   Iout[offset] = val;
-/*
-  const int size = w*h;
-  const int numThreads = blockDim.x * gridDim.x;
-  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
-  int x, y, x0, x1, y0, y1;
-  float dx, dy;
-  for (int i=threadID; i<size; i+=numThreads) {
-    x = i / w;  // row
-    y = i % w;  // col
-    periodic_1d(x0, x1, dx, xphi[y*w+x], w);
-    periodic_1d(y0, y1, dy, yphi[y*w+x], h);
-    float val = 0;
-    val += I[y0*w+x0] * (1-dx) * (1-dy);
-    val += I[y0*w+x1] * dx     * (1-dy);
-    val += I[y1*w+x0] * (1-dx) * dy;
-    val += I[y1*w+x1] * dx     * dy;
-    Iout[y*w+x] = val;
-  }
-  /*
-  for(int py = 0; py < h; ++py) {
-    for(int px = 0; px < w; ++px) {
-      x0 = px;
-      x1 = x0;
-      dx = 0;
-      y0 = px;
-      y1 = x0;
-      dy = 0;
-      //periodic_1d(x0, x1, dx, xphi[py*w+px], w);
-      //periodic_1d(y0, y1, dy, yphi[py*w+px], h);
-
-      float val = 0;
-      val += I[y0*w+x0] * (1-dx) * (1-dy);
-      val += I[y0*w+x1] * dx     * (1-dy);
-      val += I[y1*w+x0] * (1-dx) * dy;
-      val += I[y1*w+x1] * dx     * dy;
-      Iout[py*w+px] = val;
-    }
-  }
-  */
 }//image_compose_2d
 
 static __global__ inline void diffeo_compose_2d(
@@ -684,20 +666,20 @@ static __global__ inline void diffeo_compose_2d(
   int y = threadIdx.y + blockIdx.y * blockDim.y;
   int offset = x + y * blockDim.x * gridDim.x;    // col + row * width
 
-  periodic_1d_shift(x0, x1, x0_shift, x1_shift, dx, xphi[y*w+x], w);
-  periodic_1d_shift(y0, y1, y0_shift, y1_shift, dy, yphi[y*w+x], h);
+  periodic_1d_shift(x0, x1, x0_shift, x1_shift, dx, xphi[offset], w);
+  periodic_1d_shift(y0, y1, y0_shift, y1_shift, dy, yphi[offset], h);
   float val = 0;
   val += (xpsi[y0*w+x0] + x0_shift) * (1.-dx) * (1.-dy);
   val += (xpsi[y0*w+x1] + x1_shift) * dx      * (1.-dy);
   val += (xpsi[y1*w+x0] + x0_shift) * (1.-dx) * dy;
   val += (xpsi[y1*w+x1] + x1_shift) * dx      * dy;
-  xout[y*w+x] = val;
+  xout[offset] = val;
   val = 0;
   val += (ypsi[y0*w+x0] + y0_shift) * (1.-dx) * (1.-dy);
   val += (ypsi[y0*w+x1] + y0_shift) * dx      * (1.-dy);
   val += (ypsi[y1*w+x0] + y1_shift) * (1.-dx) * dy;
   val += (ypsi[y1*w+x1] + y1_shift) * dx      * dy;
-  yout[y*w+x] = val;
+  yout[offset] = val;
  /*
   for(int i = 0; i < h; ++i) {
     for(int j = 0; j < w; ++j) {
@@ -720,7 +702,7 @@ static __global__ inline void diffeo_compose_2d(
  */
 }
 
-static __global__ inline void diffeo_gradient_y_2d(const float* I, float* dIdx, float* dIdy, const int w, const int h) {
+static __global__ inline void diffeo_gradient_x_2d(const float* I, float* dIdx, float* dIdy, const int w, const int h) {
   //if (!I.is_same_shape(dIdx) or !I.is_same_shape(dIdy))
   //  return false;
 
@@ -729,21 +711,59 @@ static __global__ inline void diffeo_gradient_y_2d(const float* I, float* dIdx, 
   int offset = col + row * blockDim.x * gridDim.x;    // col + row * width
 
   if ( row == 0 )
-    dIdy[offset] = (I[1*w      +col] - I[(h-1)*w  +col] + h)/2.0;
-  if ( row == (h-1) )
-    dIdy[offset] = (I[0*w      +col] - I[(h-2)*w  +col] + h)/2.0;
+    dIdy[offset] = (I[1*w      +col] - I[(h-1)*w  +col])/2.0f;
+  else if ( row == (h-1) )
+    dIdy[offset] = (I[0*w      +col] - I[(h-2)*w  +col])/2.0f;
   else
-    dIdy[offset] = (I[(row+1)*w+col] - I[(row-1)*w+col]    )/2.0;
+    dIdy[offset] = (I[(row+1)*w+col] - I[(row-1)*w+col])/2.0f;
   if ( col == 0 )
-    dIdx[offset] = (I[row*w    +1] - I[row*w  +w-1])/2.0;
-  if ( col == (w-1) )
-    dIdx[offset] = (I[row*w  +w-2] - I[row*w    +0])/2.0;
+    dIdx[offset] = (I[row*w    +1] - I[row*w  +w-1] + w)/2.0f;
+  else if ( col == (w-1) )
+    dIdx[offset] = (I[row*w  +w-2] - I[row*w    +0] + w)/2.0f;
   else
-    dIdx[offset] = (I[row*w+col+1] - I[row*w+col-1])/2.0;
+    dIdx[offset] = (I[row*w+col+1] - I[row*w+col-1]    )/2.0f;
   /*
   for (int j = 0; j < w; ++j) {
-    dIdy[        j] = (I[1*w+j] - I[(h-1)*w+j] + h)/2.0; // TODO: verify h!
-    dIdy[(h-1)*w+j] = (I[0*w+j] - I[(h-2)*w+j] + h)/2.0; // TODO: verify h!
+    dIdy[        j] = (I[1*w+j] - I[(h-1)*w+j])/2.0; 
+    dIdy[(h-1)*w+j] = (I[0*w+j] - I[(h-2)*w+j])/2.0;
+  }
+  for (int i = 1; i < h - 1; ++i)
+    for (int j = 0; j < w; ++j)
+      dIdy[i*w+j] = (I[(i+1)*w+j] - I[(i-1)*w+j]) / 2.0;
+
+  for (int i = 0; i < h; ++i) {
+    dIdx[i*w    ] = (I[i*w+1] - I[i*w+w-1] + w)/2.0;
+    dIdx[i*w+w-1] = (I[i*w  ] - I[i*w+w-2] + w)/2.0;
+  }
+  for(int j = 1; j < w-1; ++j)
+    for(int i = 0; i < h; ++i)
+      dIdx[i*w+j] = (I[i*w+j+1] - I[i*w+j-1])/2.0;   */
+}
+
+static __global__ inline void diffeo_gradient_y_2d(const float* I, float* dIdx, float* dIdy, const int w, const int h) {
+  //if (!I.is_same_shape(dIdx) or !I.is_same_shape(dIdy))
+  //  return false;
+  // TODO: verify h!
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int offset = col + row * blockDim.x * gridDim.x;    // col + row * width
+
+  if ( row == 0 )
+    dIdy[offset] = (I[1*w      +col] - I[(h-1)*w  +col] + h)/2.0f;
+  else if ( row == (h-1) )
+    dIdy[offset] = (I[0*w      +col] - I[(h-2)*w  +col] + h)/2.0f;
+  else
+    dIdy[offset] = (I[(row+1)*w+col] - I[(row-1)*w+col]    )/2.0f;
+  if ( col == 0 )
+    dIdx[offset] = (I[row*w    +1] - I[row*w  +w-1])/2.0f;
+  else if ( col == (w-1) )
+    dIdx[offset] = (I[row*w  +w-2] - I[row*w    +0])/2.0f;
+  else
+    dIdx[offset] = (I[row*w+col+1] - I[row*w+col-1])/2.0f;
+  /*
+  for (int j = 0; j < w; ++j) {
+    dIdy[        j] = (I[1*w+j] - I[(h-1)*w+j] + h)/2.0;
+    dIdy[(h-1)*w+j] = (I[0*w+j] - I[(h-2)*w+j] + h)/2.0;
   }
   for (int i = 1; i < h - 1; ++i)
     for (int j = 0; j < w; ++j)
@@ -759,27 +779,25 @@ static __global__ inline void diffeo_gradient_y_2d(const float* I, float* dIdx, 
   */
 }
 
-static __global__ inline void diffeo_gradient_x_2d(const float* I, float* dIdx, float* dIdy, const int w, const int h) {
-  //if (!I.is_same_shape(dIdx) or !I.is_same_shape(dIdy))
-  //  return false;
-  for (int j = 0; j < w; ++j) {
-    dIdy[        j] = (I[1*w+j] - I[(h-1)*w+j])/2.0; 
-    dIdy[(h-1)*w+j] = (I[0*w+j] - I[(h-2)*w+j])/2.0;
-  }
-  for (int i = 1; i < h - 1; ++i)
-    for (int j = 0; j < w; ++j)
-      dIdy[i*w+j] = (I[(i+1)*w+j] - I[(i-1)*w+j]) / 2.0;
-
-  for (int i = 0; i < h; ++i) {
-    dIdx[i*w    ] = (I[i*w+1] - I[i*w+w-1] + w)/2.0;
-    dIdx[i*w+w-1] = (I[i*w  ] - I[i*w+w-2] + w)/2.0;
-  }
-  for(int j = 1; j < w-1; ++j)
-    for(int i = 0; i < h; ++i)
-      dIdx[i*w+j] = (I[i*w+j+1] - I[i*w+j-1])/2.0;
-}
 
 static __global__ inline void image_gradient_2d(const float *img, float *df_a, float *df_b, const int w, const int h) {
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int offset = col + row * blockDim.x * gridDim.x;    // col + row * width
+  
+  if ( row == 0 )
+    df_a[offset] = (img[1*w       + col] - img[(h-1)*w   + col])/2.0f;
+  else if ( row == (h-1) )
+    df_a[offset] = (img[            col] - img[(h-1)*w   + col])/2.0f;
+  else
+    df_a[offset] = (img[(row+1)*w + col] - img[(row-1)*w + col])/2.0f;
+  if ( col == 0 )
+    df_b[offset] = (img[row*w     + 1] - img[row*w   + w-1])/2.0f;
+  else if ( col == (w-1) )
+    df_b[offset] = (img[row*w        ] - img[row*w   + w-2])/2.0f;
+  else 
+    df_b[offset] = (img[row*w + col+1] - img[row*w + col-1])/2.0f;
+/*
   int im1 = h-1;
   int jm1;
   for (int i=0; i< h-1; im1=i, ++i) {
@@ -799,7 +817,7 @@ static __global__ inline void image_gradient_2d(const float *img, float *df_a, f
     jm1 = j;
   }
   df_a[(h-1)*w + w-1] = (img[    w-1 ] - img[(h-2)*w + w-1])/2.0f;
-  df_b[(h-1)*w + w-1] = (img[(h-1)*w ] - img[(h-1)*w + w-2])/2.0f;
+  df_b[(h-1)*w + w-1] = (img[(h-1)*w ] - img[(h-1)*w + w-2])/2.0f;         */
 }
 
 //static __global__ void Loop(float v0, float v1, float dv, const double v, const int s) {
@@ -894,6 +912,15 @@ static __global__ void Diffsq(float *res, const float *a, const float *b, int si
     res[i] = (a[i] - b[i])*(a[i] - b[i]);
 }
 
+static __global__ void Norm2(float out, const float *a, const float *b, const int size) {
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  float val = 0.0f;
+  for (int i = threadID; i < size; i += numThreads)
+    val += (a[i] - b[i])*(a[i] - b[i]);
+  out = val;
+}
+
 static __global__ void Dotsum(float *res, const float *a, const float *b, const float *c, const float *d, int size) {
   const int numThreads = blockDim.x * gridDim.x;
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
@@ -956,6 +983,14 @@ static __global__ inline void Jmapping(float *resa, float *resb,
   }
 }
 
+// Real pointwise multiplication
+static __global__ void PointwiseDiff(float *res, const float *a, const float *b, const int size) {
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < size; i += numThreads) {
+    res[i] = a[i] - b[i];
+  }
+}
 
 // Real pointwise multiplication
 static __global__ void PointwiseScale(float *a, int size, float scale) {

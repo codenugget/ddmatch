@@ -21,9 +21,9 @@ public:
   // null for invalid input or object
   // second in tuple is a message (usually descriptive error state)
   static std::tuple<std::unique_ptr<extendedCUFFT>, std::string> create(
-    const float* source, const float* target,
+    const Real* source, const Real* target,
     int nrow, int ncol, 
-    float alpha, float beta, float sigma,
+    Real alpha, Real beta, Real sigma,
     bool compute_phi);
 
   // niter=300, epsilon=0.1
@@ -45,8 +45,8 @@ public:
   const int cols()  const { return m_cols; }
 
 private:
-  extendedCUFFT(const float* source, const float* target, int nrow, int ncol,
-    float alpha, float beta, float sigma,
+  extendedCUFFT(const Real* source, const Real* target, int nrow, int ncol,
+    Real alpha, Real beta, Real sigma,
     bool compute_phi) :
     m_source(source), m_target(target), m_rows(ncol), m_cols(ncol), m_alpha(alpha), m_beta(beta), m_sigma(sigma),
     m_compute_phi(compute_phi)
@@ -54,32 +54,32 @@ private:
   }
   void setup();
 
-  const float *m_target, *m_source;
-  float *m_I;
-  float *m_phix, *m_phiy;
-  float *m_phiinvx, *m_phiinvy;
-  float *m_E;
+  const Real *m_target, *m_source;
+  Real *m_I;
+  Real *m_phix, *m_phiy;
+  Real *m_phiinvx, *m_phiinvy;
+  Real *m_E;
   int m_rows, m_cols;
 
-  float m_alpha;
-  float m_beta;
-  float m_sigma;
+  Real m_alpha;
+  Real m_beta;
+  Real m_sigma;
   bool m_compute_phi;
 
   // Helper variables
   // Q: Why declare these here and not in the .cu file?
-  float *m_multipliers;
-  float *I, *I0, *xphi, *yphi, *Iout;
-  float *data;
-  float *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;
-  float *idx, *idy;
-  float *m_dIda, *m_dIdb;
-  float *m_aa, *m_ab, *m_ba, *m_bb;
-  float *m_haa, *m_hab, *m_hba, *m_hbb;
-  float *m_gaa, *m_gab, *m_gba, *m_gbb;
-  float *m_dhaada, *m_dhabda, *m_dhbada, *m_dhbbda;
-  float *m_dhaadb, *m_dhabdb, *m_dhbadb, *m_dhbbdb;
-  float *m_Ja, *m_Jb;
+  Real *m_multipliers;
+  Real *I, *I0, *xphi, *yphi, *Iout;
+  Real *data;
+  Real *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;
+  Real *idx, *idy;
+  Real *m_dIda, *m_dIdb;
+  Real *m_aa, *m_ab, *m_ba, *m_bb;
+  Real *m_haa, *m_hab, *m_hba, *m_hbb;
+  Real *m_gaa, *m_gab, *m_gba, *m_gbb;
+  Real *m_dhaada, *m_dhabda, *m_dhbada, *m_dhbbda;
+  Real *m_dhaadb, *m_dhabdb, *m_dhbadb, *m_dhbbdb;
+  Real *m_Ja, *m_Jb;
 };
 
 

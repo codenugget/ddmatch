@@ -28,10 +28,6 @@
 
 
 
-
-#define ROWS 4
-#define NX 16
-
 namespace fs = std::filesystem;
 
 bool save_image(const float* arr, const int w, const int h, const fs::path& filename) {
@@ -182,9 +178,9 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::Confi
   auto thisI0 = I0.data();
   auto thisI1 = I1.data();
   // Copy values
-  for (int i=0; i<NX; ++i) {
-      source[i] = thisI0[i];
-      target[i] = thisI1[i];
+  for (int i=0; i<nrow*ncol; ++i) {
+    source[i] = static_cast<float>( thisI0[i] );
+    target[i] = static_cast<float>( thisI1[i] );
   }
 
   bool compute_phi = cfg.compute_phi_;
