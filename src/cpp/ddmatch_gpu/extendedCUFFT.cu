@@ -278,8 +278,8 @@ int extendedCUFFT::run(int niter, float epsilon) {
   }
 
   // initialize itentity mapping
-  dim3 blocks(NX/16,NX/16);
-  dim3 threads(16,16);
+  //dim3 blocks(NX/16,NX/16);
+  //dim3 threads(16,16);
   //CreateIdentity<<<blocks,threads>>>(d_idx, d_idy);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to initialize diffeomorphisms on GPU\n");
@@ -300,8 +300,9 @@ int extendedCUFFT::run(int niter, float epsilon) {
     printf("h_idy[%d] = %f\n", i, h_idy[i]);
   }
   */
-
-  image_compose_2d<<<1,1>>>(d_I0, d_phiinvb, d_phiinva, d_I, w, h);
+  dim3 blocks(m_rows,m_cols);
+  dim3 threads(1,1);
+  image_compose_2d<<<blocks,threads>>>(d_I0, d_phiinvb, d_phiinva, d_I, w, h);
   //cudaDeviceSynchronize();
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU 1\n");
@@ -592,7 +593,7 @@ static __device__ __host__ inline void periodic_1d_shift(int v0, int v1, int v0_
 static __global__ inline void image_compose_2d(const float *I, const float *xphi, const float *yphi, float *Iout, const int w, const int h) {
   int x0, x1, y0, y1;
   float dx, dy;
-
+/*
   for(int y = 0; y < h; ++y) {
     for(int x = 0; x < w; ++x) {
       periodic_1d(x0, x1, dx, xphi[y*w+x], w);
@@ -605,10 +606,13 @@ static __global__ inline void image_compose_2d(const float *I, const float *xphi
       Iout[y*w+x] = val;
     }
   }
-/*
+*/
   int x = threadIdx.x + blockIdx.x * blockDim.x;
   int y = threadIdx.y + blockIdx.y * blockDim.y;
   int offset = x + y * blockDim.x * gridDim.x;    // col + row * width
+  //int x = blockIdx.x;
+  //int y = blockIdx.y;
+  //int offset = x + y * gridDim.x;
 
   periodic_1d(x0, x1, dx, xphi[offset], w);
   periodic_1d(y0, y1, dy, yphi[offset], h);
