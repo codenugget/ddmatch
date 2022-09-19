@@ -36,6 +36,8 @@ static __device__ __host__ inline void periodic_1d_shift(int, int, int, int, flo
 
 //static __global__ void Loop(float, float, float, const double, const int);
 static __global__ void CreateIdentity(float*, float*);
+static __global__ void SetVal(float*, const float, const int);
+static __global__ void CopyTo(float*, const float*, const int);
 static __global__ void PointwiseScale(float*, int, float);
 static __global__ void PointwiseDiff(float*, const float*, const float*, const int);
 static __global__ void Complex_diffsq(float*, const Complex*, const Complex*, int);
@@ -49,6 +51,7 @@ static __global__ inline void image_gradient_2d(const float*, float*, float*, co
 static __global__ inline void image_compose_2d(const float*, const float*, const float*, float*, const int, const int);
 static __global__ inline void diffeo_gradient_x_2d(const float*, float*, float*, const int, const int);
 static __global__ inline void diffeo_gradient_y_2d(const float*, float*, float*, const int, const int);
+static __global__ inline void diffeo_compose_2d(const float*, const float*, const float*, const float*, float*, float*, const int, const int);
 static __global__ inline void Jmapping(float*, float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const float*, const int);
 static __global__ inline void FullJmap(float*, float*, const float*, const float*, const float*, const float*, const float, const int);
 
@@ -150,6 +153,10 @@ int extendedCUFFT::run(int niter, float epsilon) {
   float* d_E;
   float* d_idx;
   float* d_idy;
+  float  d_kE;
+
+  float* d_Xa;
+  float* d_Xb;
 
   float *I, *I0, *xphi, *yphi, *Iout;
   float *data;
@@ -209,9 +216,12 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaMalloc((void**)&d_I,  sizeof(float)*NX);
   cudaMalloc((void**)&d_phiinva, sizeof(float)*NX);
   cudaMalloc((void**)&d_phiinvb, sizeof(float)*NX);
+  cudaMalloc((void**)&d_Xa, sizeof(float)*NX);
+  cudaMalloc((void**)&d_Xb, sizeof(float)*NX);
   cudaMalloc((void**)&d_phia, sizeof(float)*NX);
   cudaMalloc((void**)&d_phib, sizeof(float)*NX);
   cudaMalloc((void**)&d_E, sizeof(float)*niter);
+  cudaMalloc((void**)&d_kE, sizeof(float) );
 
   cudaMalloc((void**)&d_idx, sizeof(float)*NX);
   cudaMalloc((void**)&d_idy, sizeof(float)*NX);
@@ -315,20 +325,25 @@ int extendedCUFFT::run(int niter, float epsilon) {
     return -1;
   }
 
-  image_compose_2d<<<blocks,threads>>>(d_I0, d_phiinvb, d_phiinva, d_I, w, h);
-  //cudaDeviceSynchronize();
-  if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU 1\n");
-    return -1;
-  }
+  for (int k=0; k<niter; ++k) {
 
-  diffeo_gradient_x_2d<<<blocks,threads>>>(phiinvx, xddx, xddy, w, h);
-  diffeo_gradient_y_2d<<<blocks,threads>>>(phiinvy, yddx, yddy, w, h);
-  //image_compose_2d<<<blocks,threads>>>(I, tmpx, tmpy, I0, w, h);
-  if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU\n");
-    return -1;
-  }
+    image_compose_2d<<<blocks,threads>>>(d_I0, d_phiinvb, d_phiinva, d_I, w, h);
+    //cudaDeviceSynchronize();
+    if (cudaGetLastError() != cudaSuccess){
+      fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU 1\n");
+      return -1;
+    }
+
+    Norm2<<<1,1>>>(d_kE, d_I0, d_I, NX);  // returns sum( (I0-I)^2 ) 
+    SetVal<<<1,1>>>(d_E, d_kE, k);
+
+    diffeo_gradient_x_2d<<<blocks,threads>>>(d_phiinvb, m_bb, m_ba, w, h);
+    diffeo_gradient_y_2d<<<blocks,threads>>>(d_phiinva, m_ab, m_aa, w, h);
+    //image_compose_2d<<<blocks,threads>>>(I, tmpx, tmpy, I0, w, h);
+    if (cudaGetLastError() != cudaSuccess){
+      fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU\n");
+      return -1;
+    }
 /*
   //  Decide whether to use indexing (a,b) or (y,x) 
   //  There is confusion with (y,x), since usually x is first, but not on images like here...  
@@ -336,43 +351,47 @@ int extendedCUFFT::run(int niter, float epsilon) {
   diffeo_gradient_x_2d<<<1,1>>>(phiinvx, m_bb, m_ba, w, h);
   diffeo_gradient_y_2d<<<1,1>>>(phiinvy, m_ab, m_aa, w, h);
 */
-  //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
-  Dotsum<<<num_threads,1>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);  // for now, no blocks   
-  Dotsum<<<num_threads,1>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
-  Dotsum<<<num_threads,1>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
-  Dotsum<<<num_threads,1>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
-  //Dotsum(float *res, const float *a, const float *b, int size) {
-  //   return res[i] = a[i]*a[i] + b[i]*b[i];
-  image_gradient_2d<<<blocks,threads>>>(m_haa, m_dhaada, m_dhaadb, w, h);
-  image_gradient_2d<<<blocks,threads>>>(m_hab, m_dhabda, m_dhabdb, w, h);
-  image_gradient_2d<<<blocks,threads>>>(m_hba, m_dhbada, m_dhbadb, w, h);
-  image_gradient_2d<<<blocks,threads>>>(m_hbb, m_dhbbda, m_dhbbdb, w, h);
-  // static __global__ inline void image_gradient_2d(const float *img, float *df_a, float *df_b, const int w, const int h) {
-  //      df_a[i*w + j] = (img[(i+1)*w+j] - img[(i-1)*w+j])/2.0f;
-  //      df_b[i*w + j] = (img[i*w + j+1] - img[i*w + j-1])/2.0f;
+    //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
+    Dotsum<<<num_threads,1>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);  // for now, no blocks   
+    Dotsum<<<num_threads,1>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
+    Dotsum<<<num_threads,1>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
+    Dotsum<<<num_threads,1>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
+    //Dotsum(float *res, const float *a, const float *b, int size) {
+    //   return res[i] = a[i]*a[i] + b[i]*b[i];
+    image_gradient_2d<<<blocks,threads>>>(m_haa, m_dhaada, m_dhaadb, w, h);
+    image_gradient_2d<<<blocks,threads>>>(m_hab, m_dhabda, m_dhabdb, w, h);
+    image_gradient_2d<<<blocks,threads>>>(m_hba, m_dhbada, m_dhbadb, w, h);
+    image_gradient_2d<<<blocks,threads>>>(m_hbb, m_dhbbda, m_dhbbdb, w, h);
+    // static __global__ inline void image_gradient_2d(const float *img, float *df_a, float *df_b, const int w, const int h) {
+    //      df_a[i*w + j] = (img[(i+1)*w+j] - img[(i-1)*w+j])/2.0f;
+    //      df_b[i*w + j] = (img[i*w + j+1] - img[i*w + j-1])/2.0f;
 
-
-  Jmapping<<<num_threads,1>>>(m_Ja, m_Jb, 
+/*
+    Jmapping<<<num_threads,1>>>(m_Ja, m_Jb, 
        m_haa,    m_hab,    m_hba,    m_hbb, 
        m_gaa,    m_gab,    m_gba,    m_gbb, 
        m_dhaada, m_dhabda, m_dhbada, m_dhbbda, 
        m_dhaadb, m_dhabdb, m_dhbadb, m_dhbbdb, 
        NX);
+*/
+    image_gradient_2d<<<blocks,threads>>>(d_I, m_dIda, m_dIdb, w, h);
 
-  image_gradient_2d<<<blocks,threads>>>(d_I, m_dIda, m_dIdb, w, h);
+    FullJmap<<<num_threads,1>>>(m_Ja, m_Jb, d_I, d_I0, m_dIda, m_dIdb, m_sigma, NX);
+    // returns   -(I-I0)*dI + sigma*( Jmapping );
 
-  FullJmap<<<num_threads,1>>>(m_Ja, m_Jb, d_I, I0, m_dIda, m_dIdb, m_sigma, NX);
-  // returns   -(I-I0)*dI + sigma*( Jmapping );
+    PointwiseScale<<<num_threads,1>>>(m_Ja, NX, epsilon);
+    PointwiseScale<<<num_threads,1>>>(m_Jb, NX, epsilon);
+    if (cudaGetLastError() != cudaSuccess){
+      fprintf(stderr, "CUFFT error: Scaling failed successfully\n");
+      return -1;
+    }
 
-  PointwiseScale<<<num_threads,1>>>(m_Ja, NX, epsilon);
-  PointwiseScale<<<num_threads,1>>>(m_Jb, NX, epsilon);
-  if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "CUFFT error: Scaling failed successfully\n");
-    return -1;
-  }
+    PointwiseDiff<<<num_threads,1>>>(d_Xa, d_idy, m_Ja, NX);
+    PointwiseDiff<<<num_threads,1>>>(d_Xb, d_idx, m_Jb, NX);
 
-  PointwiseDiff<<<num_threads,1>>>(d_phiinva, d_idy, m_Ja, NX);
-  PointwiseDiff<<<num_threads,1>>>(d_phiinvb, d_idx, m_Jb, NX);
+    diffeo_compose_2d<<<threads,blocks>>>(d_phiinvb, d_phiinva, d_Xb, d_Xa, tmpx, tmpy, w, h);
+    CopyTo<<<NX,1>>>(d_phiinva, tmpy, NX);
+    CopyTo<<<NX,1>>>(d_phiinvb, tmpx, NX);
  /*
   // TODO: configure smoothing routine, introduce alpha and beta, create k-vector
   cudaMemcpy(tmpy, m_Ja, sizeof(float)*NX, cudaMemcpyHostToDevice);
@@ -442,10 +461,12 @@ int extendedCUFFT::run(int niter, float epsilon) {
  // TODO
   //Norm2<<<num_threads,1>>>(d_E[k], d_I, d_I0, NX);
   
-  cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
+  } //for k<niter
 
   cudaMemcpy(h_idy, d_phiinva, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(h_idx, d_phiinvb, sizeof(float)*NX, cudaMemcpyDeviceToHost);
+  cudaMemcpy(m_E, d_E, sizeof(float)*niter, cudaMemcpyDeviceToHost);
   cudaMemcpy(m_phiinvy, d_phiinva, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(m_phiinvx, d_phiinvb, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(h_result, odata_a, sizeof(Complex)*(NX/2+1), cudaMemcpyDeviceToHost);
@@ -508,6 +529,8 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaFree(d_E);
   cudaFree(d_idx);
   cudaFree(d_idy);
+  cudaFree(d_Xa);
+  cudaFree(d_Xb);
   cudaFree(I);
   cudaFree(I0);
   cudaFree(tmpx);
@@ -716,6 +739,7 @@ static __global__ inline void diffeo_gradient_x_2d(const float* I, float* dIdx, 
     dIdy[offset] = (I[0*w      +col] - I[(h-2)*w  +col])/2.0f;
   else
     dIdy[offset] = (I[(row+1)*w+col] - I[(row-1)*w+col])/2.0f;
+
   if ( col == 0 )
     dIdx[offset] = (I[row*w    +1] - I[row*w  +w-1] + w)/2.0f;
   else if ( col == (w-1) )
@@ -754,6 +778,7 @@ static __global__ inline void diffeo_gradient_y_2d(const float* I, float* dIdx, 
     dIdy[offset] = (I[0*w      +col] - I[(h-2)*w  +col] + h)/2.0f;
   else
     dIdy[offset] = (I[(row+1)*w+col] - I[(row-1)*w+col]    )/2.0f;
+
   if ( col == 0 )
     dIdx[offset] = (I[row*w    +1] - I[row*w  +w-1])/2.0f;
   else if ( col == (w-1) )
@@ -788,9 +813,10 @@ static __global__ inline void image_gradient_2d(const float *img, float *df_a, f
   if ( row == 0 )
     df_a[offset] = (img[1*w       + col] - img[(h-1)*w   + col])/2.0f;
   else if ( row == (h-1) )
-    df_a[offset] = (img[            col] - img[(h-1)*w   + col])/2.0f;
+    df_a[offset] = (img[            col] - img[(h-2)*w   + col])/2.0f;
   else
     df_a[offset] = (img[(row+1)*w + col] - img[(row-1)*w + col])/2.0f;
+
   if ( col == 0 )
     df_b[offset] = (img[row*w     + 1] - img[row*w   + w-1])/2.0f;
   else if ( col == (w-1) )
@@ -980,6 +1006,18 @@ static __global__ inline void Jmapping(float *resa, float *resb,
         +((hab[i]-gab[i])*dhaadb[i])
         +((hbb[i]-gbb[i])*dhbadb[i])
            );
+  }
+}
+
+static __global__ void SetVal(float *a, const float x, const int pos) {
+  a[pos] = x;
+}
+
+static __global__ void CopyTo(float *a, const float *x, const int size) {
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < size; i += numThreads) {
+    a[i] = x[i];
   }
 }
 
