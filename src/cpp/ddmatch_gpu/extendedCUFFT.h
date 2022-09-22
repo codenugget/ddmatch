@@ -69,17 +69,17 @@ private:
   // Helper variables
   // Q: Why declare these here and not in the .cu file?
   Real *m_multipliers;
-  Real *I, *I0, *xphi, *yphi, *Iout;
   Real *data;
-  Real *tmpx, *tmpy, *phiinvx, *phiinvy, *xddx, *xddy, *yddx, *yddy;
+  Real *tmpx, *tmpy, *phiinvx, *phiinvy;
   Real *idx, *idy;
-  Real *m_dIda, *m_dIdb;
   Real *m_aa, *m_ab, *m_ba, *m_bb;
   Real *m_haa, *m_hab, *m_hba, *m_hbb;
   Real *m_gaa, *m_gab, *m_gba, *m_gbb;
   Real *m_dhaada, *m_dhabda, *m_dhbada, *m_dhbbda;
   Real *m_dhaadb, *m_dhabdb, *m_dhbadb, *m_dhbbdb;
-  Real *m_Ja, *m_Jb;
+  // Device variables
+  Real *d_Jy, *d_Jx;
+  Real *d_dIdy, *d_dIdx;
 };
 
 
