@@ -31,8 +31,8 @@ static __device__ __host__ inline float row_position(int, int);
 static __device__ __host__ inline float col_position(int, int);
 static __device__ __host__ inline float diff_square(Complex, Complex);
 //static __device__ __host__ inline float dot_sum(float, float);
-static __device__ __host__ inline void periodic_1d(int, int, float, const float, const int);
-static __device__ __host__ inline void periodic_1d_shift(int, int, int, int, float, const float, const int);
+static __device__ __host__ inline void periodic_1d(int&, int&, float&, const float&, const int&);
+static __device__ __host__ inline void periodic_1d_shift(int&, int&, int&, int&, float&, const float&, const int&);
 
 //static __global__ void Loop(float, float, float, const double, const int);
 static __global__ inline void CreateIdentity(float*, float*);
@@ -588,7 +588,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
 
 // wrapper function
-static __device__ __host__ inline void periodic_1d(int v0, int v1, float dv, const float v, const int s) {
+static __device__ __host__ inline void periodic_1d(int& v0, int& v1, float& dv, const float& v, const int& s) {
   // NOTE: what should we do when v is much larger than int allows?
   // assert(v <= std::numeric_limits<int>::max());
   // assert(v >= std::numeric_limits<int>::lowest());
@@ -613,7 +613,7 @@ static __device__ __host__ inline void periodic_1d(int v0, int v1, float dv, con
 }
 
 // assigns v0_idx, v1_idx, v0_shift, v1_shift, frac_dv
-static __device__ __host__ inline void periodic_1d_shift(int v0, int v1, int v0_shift, int v1_shift, float dv, const float v, const int s) {
+static __device__ __host__ inline void periodic_1d_shift(int& v0, int& v1, int& v0_shift, int& v1_shift, float& dv, const float& v, const int& s) {
   // NOTE: what should we do when v is much larger than int allows?
   // assert(v <= std::numeric_limits<int>::max());
   // assert(v >= std::numeric_limits<int>::lowest());
