@@ -43,7 +43,7 @@ static __global__ inline void PointwiseDiff(float*, const float*, const float*, 
 static __global__ inline void Complex_diffsq(float*, const Complex*, const Complex*, int);
 static __global__ inline void ComplexPointwiseScale(Complex*, int, float);
 static __global__ inline void MultComplexAndReal(Complex*, Real*, const int);
-static __global__ inline void Norm2(float, const float*, const float*, const int);
+static __global__ inline void Norm2(float*, const float*, const float*, const int, const int);
 static __global__ inline void Diffsq(float*, const float*, const float*, int);
 static __global__ inline void Dotsum(float*, const float*, const float*, const float*, const float*, int);
 // Question: What is the meaning of inline?
@@ -316,14 +316,14 @@ int extendedCUFFT::run(int niter, float epsilon) {
   }
   */
   // TODO: manage threads and blocks in json configuration 
-  int num_threads = 16;
-  int num_blocks = (num_threads-1 + THREADS_PER_BLOCK)/THREADS_PER_BLOCK;
-  dim3 blocks(num_blocks,num_blocks);     // alternatively: (m_rows,m_cols)
-  dim3 threads(num_threads,num_threads);  // alternatively: (1,1)
-  if ( num_threads >= NX ) {
-    fprintf(stderr, "ERROR * * * Number of threads larger than the number of elements\n");
-    return -1;
-  }
+  //int num_threads = 16;
+  //int num_blocks = (num_threads-1 + THREADS_PER_BLOCK)/THREADS_PER_BLOCK;
+  dim3 blocks(m_rows,m_cols);     // alternatively: (num_blocks,num_blocks)
+  dim3 threads(1,1);              // alternatively: (num_threads,num_threads)
+  //if ( num_threads >= NX ) {
+  //  fprintf(stderr, "ERROR * * * Number of threads larger than the number of elements\n");
+  //  return -1;
+  //}
 
   for (int k=0; k<niter; ++k) {
 
@@ -334,8 +334,8 @@ int extendedCUFFT::run(int niter, float epsilon) {
     //  return -1;
     //}
 
-    Norm2<<<1,1>>>(d_kE, d_I1, d_I, NX);  // returns sum( (I0-I)^2 ) 
-    SetVal<<<1,1>>>(d_E, d_kE, k);
+    Norm2<<<NX,1>>>(d_E, d_I1, d_I, k, NX);  // returns sum( (I1-I)^2 ) 
+    //SetVal<<<1,1>>>(d_E, d_kE, k);
 
     diffeo_gradient_x_2d<<<blocks,threads>>>(d_phiinvx, m_bb, m_ba, w, h);
     diffeo_gradient_y_2d<<<blocks,threads>>>(d_phiinvy, m_ab, m_aa, w, h);
@@ -349,10 +349,10 @@ int extendedCUFFT::run(int niter, float epsilon) {
   //  There is confusion with (y,x), since usually x is first, but not on images like here...  
 
     //np.copyto(self.h[0,0], self.yddy*self.yddy+self.xddy*self.xddy)
-    Dotsum<<<num_threads,1>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);  // for now, no blocks   
-    Dotsum<<<num_threads,1>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
-    Dotsum<<<num_threads,1>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
-    Dotsum<<<num_threads,1>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
+    Dotsum<<<NX,1>>>(m_haa, m_aa, m_aa, m_ba, m_ba, NX);  // for now, no blocks   
+    Dotsum<<<NX,1>>>(m_hba, m_ab, m_aa, m_bb, m_ba, NX);
+    Dotsum<<<NX,1>>>(m_hab, m_aa, m_ab, m_ba, m_bb, NX);
+    Dotsum<<<NX,1>>>(m_hbb, m_ab, m_ab, m_bb, m_bb, NX);
     //Dotsum(float *res, const float *a, const float *b, int size) {
     //   return res[i] = a[i]*a[i] + b[i]*b[i];
     image_gradient_2d<<<blocks,threads>>>(m_haa, m_dhaada, m_dhaadb, w, h);
@@ -374,18 +374,18 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
     image_gradient_2d<<<blocks,threads>>>(d_I, d_dIdy, d_dIdx, w, h);
 
-    FullJmap<<<num_threads,1>>>(d_Jy, d_Jx, d_I, d_I0, d_dIdy, d_dIdx, m_sigma, NX);
+    FullJmap<<<NX,1>>>(d_Jy, d_Jx, d_I, d_I0, d_dIdy, d_dIdx, m_sigma, NX);
     // returns   -(I-I0)*dI + sigma*( Jmapping );
 
-    PointwiseScale<<<num_threads,1>>>(d_Jy, NX, epsilon);
-    PointwiseScale<<<num_threads,1>>>(d_Jx, NX, epsilon);
+    PointwiseScale<<<NX,1>>>(d_Jy, NX, epsilon);
+    PointwiseScale<<<NX,1>>>(d_Jx, NX, epsilon);
     if (cudaGetLastError() != cudaSuccess){
       fprintf(stderr, "CUFFT error: Scaling failed successfully\n");
       return -1;
     }
 
-    PointwiseDiff<<<num_threads,1>>>(d_Xy, d_idy, d_Jy, NX);
-    PointwiseDiff<<<num_threads,1>>>(d_Xx, d_idx, d_Jx, NX);
+    PointwiseDiff<<<NX,1>>>(d_Xy, d_idy, d_Jy, NX);
+    PointwiseDiff<<<NX,1>>>(d_Xx, d_idx, d_Jx, NX);
 
     diffeo_compose_2d<<<blocks,threads>>>(d_phiinvx, d_phiinvy, d_Xx, d_Xy, tmpx, tmpy, w, h);
 
@@ -683,7 +683,7 @@ static __global__ inline void diffeo_compose_2d(
   const int w, const int h) {
   // Compute composition psi o phi. 
   // Assuming psi and phi are periodic.
-  // using periodic_1d_shift(int v0, int v1, int v0_shift, int v1_shift, float dv, const float v, const int s)
+  // using periodic_1d_shift(int&, int&, int&, int&, float&, const float&, const int&)
 
   int x0, x1, x0_shift, x1_shift;
   int y0, y1, y0_shift, y1_shift;
@@ -941,13 +941,13 @@ static __global__ inline void Diffsq(float *res, const float *a, const float *b,
     res[i] = (a[i] - b[i])*(a[i] - b[i]);
 }
 
-static __global__ inline void Norm2(float out, const float *a, const float *b, const int size) {
+static __global__ inline void Norm2(float* E, const float *a, const float *b, const int iter, const int size) {
   const int numThreads = blockDim.x * gridDim.x;
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
   float val = 0.0f;
   for (int i = threadID; i < size; i += numThreads)
     val += (a[i] - b[i])*(a[i] - b[i]);
-  out = val;
+  E[iter] = val;
 }
 
 static __global__ inline void Dotsum(float *res, const float *a, const float *b, const float *c, const float *d, int size) {
