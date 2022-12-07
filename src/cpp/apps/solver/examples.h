@@ -59,7 +59,7 @@ namespace examples {
         return { I0, I1 };
     }
 
-    inline std::tuple<dGrid, dGrid> create_translate_x_maps(const SkewConfig& cfg) {
+    inline std::tuple<dGrid, dGrid> create_translate_y_maps(const SkewConfig& cfg) {
       dGrid I0(cfg.resolution_[0], cfg.resolution_[1], 0.0);
       dGrid I1(cfg.resolution_[0], cfg.resolution_[1], 0.0);
 
@@ -71,7 +71,7 @@ namespace examples {
       }
       return { I0, I1 };
     }
-    inline std::tuple<dGrid, dGrid> create_translate_y_maps(const SkewConfig& cfg) {
+    inline std::tuple<dGrid, dGrid> create_translate_x_maps(const SkewConfig& cfg) {
       dGrid I0(cfg.resolution_[0], cfg.resolution_[1], 0.0);
       dGrid I1(cfg.resolution_[0], cfg.resolution_[1], 0.0);
 
@@ -127,9 +127,9 @@ namespace examples {
         {"alpha", 1.0},
         {"beta", 0.0},
         {"sigma", 0.0},
-        {"iterations", 80},
-        {"epsilon", 0.4},
-        {"store_every", 80},
+        {"iterations", 120},
+        {"epsilon", 0.09},
+        {"store_every", 120},
         {"description", "Moving square linearly."},
         {"output_folder", "translation/linear"},
         {"source_image", source_filename},
@@ -158,9 +158,9 @@ namespace examples {
         {"alpha", 1.0},
         {"beta", 0.0},
         {"sigma", 0.0},
-        {"iterations", 80},
-        {"epsilon", 0.4},
-        {"store_every", 80},
+        {"iterations", 120},
+        {"epsilon", 0.09},
+        {"store_every", 120},
         {"description", "Moving square linearly."},
         {"output_folder", "translation/linear"},
         {"source_image", source_filename},

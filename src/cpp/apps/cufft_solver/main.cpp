@@ -257,6 +257,10 @@ int main(int argc, char** argv)
     .default_value(false)
     .implicit_value(true)
     .help("Creates example files: example_dens.json, source_dens.png and target_dens.png");
+  program.add_argument("--example-linear")
+    .default_value(false)
+    .implicit_value(true)
+    .help("Creates example files: example_tran.json,source_tran.png, target_tran_x.png and target_tran_y.png");
   program.add_argument("-j", "--json")
     .remaining()
     .help("Runs the solver using the remaining list of json files (add this option at the end)");
@@ -272,6 +276,7 @@ int main(int argc, char** argv)
 
   bool example_skew = program["--example-skew"] == true;
   bool example_dens = program["--example-density"] == true;
+  bool example_translate = program["--example-linear"] == true;
   std::vector<std::string> json_filenames;
   try {
     json_filenames = program.get<std::vector<std::string>>("--json");
@@ -286,6 +291,11 @@ int main(int argc, char** argv)
   if (example_dens) {
     examples::generate_density("example_dens.json", "source_dens.png", "target_dens.png");
     examples::print_instructions_density();
+  }
+  if (example_translate) {
+    examples::generate_translate_x("example_translate.json", "source_tran.png", "target_tran_x.png");
+    examples::generate_translate_y("example_translate.json", "source_tran.png", "target_tran_y.png");
+    examples::print_instructions_translate();
   }
 
     // if no flags were provided, and there is no work provided, print the help
