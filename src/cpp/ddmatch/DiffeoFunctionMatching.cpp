@@ -228,11 +228,11 @@ void DiffeoFunctionMatching::run(int niter, double epsilon) {
     // NOTE: Double check that we should square the squared sum.
     const auto square_sum = [](const double x, const double y){
       const double v = x*x + y*y;
-      return v*v;
+      return v;
     };
     const auto dot_sum = [](const double x, const double y, const double z, const double w){
       const double v = x*y + z*w;
-      return v*v;
+      return v;
     };
 
     elem_set(m_h[0][0], m_yddy, m_xddy, square_sum);
