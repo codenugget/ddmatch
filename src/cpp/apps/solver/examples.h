@@ -35,18 +35,53 @@ namespace examples {
         Vec2i resolution_ = Vec2i{256,256};
         double value_ = 1.0;
     };
+    // NOTE: default values are set to fit one example run
+    struct ConfigDensity {
+      int seed_ = 0;
+      int num_points_ = 400;
+      Vec2i p0_ = Vec2i{5,5};
+      Vec2i p1_ = Vec2i{25,25};
+      Vec2i offset_ = Vec2i{20,20};
+      Vec2i resolution_ = Vec2i{128,128};
+      double value_ = 1.0;
+    };
 
     inline std::tuple<dGrid, dGrid> create_skew_maps(const SkewConfig& cfg) {
         dGrid I0(cfg.resolution_[0], cfg.resolution_[1], 0.0);
         dGrid I1(cfg.resolution_[0], cfg.resolution_[1], 0.0);
 
         for (int row = cfg.p0_[0]; row < cfg.p0_[0]+cfg.nPoints_[0]; ++row) {
-            for (int col = cfg.p0_[1]; col < cfg.p0_[1]+cfg.nPoints_[1]; ++col) {
+          for (int col = cfg.p0_[1]; col < cfg.p0_[1]+cfg.nPoints_[1]; ++col) {
             I0[row][col] = cfg.value_;
             I1[row + cfg.offset_[0]][row + col + cfg.offset_[1]] = cfg.value_;
-            }
+          }
         }
         return { I0, I1 };
+    }
+
+    inline std::tuple<dGrid, dGrid> create_translate_x_maps(const SkewConfig& cfg) {
+      dGrid I0(cfg.resolution_[0], cfg.resolution_[1], 0.0);
+      dGrid I1(cfg.resolution_[0], cfg.resolution_[1], 0.0);
+
+      for (int row = cfg.p0_[0]; row < cfg.p0_[0]+cfg.nPoints_[0]; ++row) {
+        for (int col = cfg.p0_[1]; col < cfg.p0_[1]+cfg.nPoints_[1]; ++col) {
+          I0[row][col] = cfg.value_;
+          I1[row + cfg.offset_[0]][col] = cfg.value_;
+        }
+      }
+      return { I0, I1 };
+    }
+    inline std::tuple<dGrid, dGrid> create_translate_y_maps(const SkewConfig& cfg) {
+      dGrid I0(cfg.resolution_[0], cfg.resolution_[1], 0.0);
+      dGrid I1(cfg.resolution_[0], cfg.resolution_[1], 0.0);
+
+      for (int row = cfg.p0_[0]; row < cfg.p0_[0]+cfg.nPoints_[0]; ++row) {
+        for (int col = cfg.p0_[1]; col < cfg.p0_[1]+cfg.nPoints_[1]; ++col) {
+          I0[row][col] = cfg.value_;
+          I1[row][col + cfg.offset_[1]] = cfg.value_;
+        }
+      }
+      return { I0, I1 };
     }
 
     inline void generate_skew(std::string json_filename, std::string source_filename, std::string target_filename) {
@@ -77,18 +112,70 @@ namespace examples {
         std::ofstream fp(json_filename);
         if (fp)
             fp << std::setw(4) << j_run;
-        }
+      }
 
-        // NOTE: default values are set to fit one example run
-        struct ConfigDensity {
-            int seed_ = 0;
-            int num_points_ = 400;
-            Vec2i p0_ = Vec2i{5,5};
-            Vec2i p1_ = Vec2i{25,25};
-            Vec2i offset_ = Vec2i{20,20};
-            Vec2i resolution_ = Vec2i{128,128};
-            double value_ = 1.0;
-        };
+    // Linear movement  x-direction
+    inline void generate_translate_x(std::string json_filename, std::string source_filename, std::string target_filename) {
+      SkewConfig cfg;
+      const auto [src, tgt] = create_translate_x_maps(cfg);
+      save_density_map(src, source_filename);
+      save_density_map(tgt, target_filename);
+
+      // create an example json output file
+      nlohmann::json j_linear = {
+        {"compute_phi", true},
+        {"alpha", 1.0},
+        {"beta", 0.0},
+        {"sigma", 0.0},
+        {"iterations", 80},
+        {"epsilon", 0.4},
+        {"store_every", 80},
+        {"description", "Moving square linearly."},
+        {"output_folder", "translation/linear"},
+        {"source_image", source_filename},
+        {"target_image", target_filename}
+      };
+      nlohmann::json j_run = {
+        {"run_linear", j_linear}
+      };
+
+      // NOTE: std::setw makes the output add spaces to be more human readable
+      std::ofstream fp(json_filename);
+      if (fp)
+        fp << std::setw(4) << j_run;
+    }
+
+    // Linear movement  y-direction
+    inline void generate_translate_y(std::string json_filename, std::string source_filename, std::string target_filename) {
+      SkewConfig cfg;
+      const auto [src, tgt] = create_translate_y_maps(cfg);
+      save_density_map(src, source_filename);
+      save_density_map(tgt, target_filename);
+
+      // create an example json output file
+      nlohmann::json j_linear = {
+        {"compute_phi", true},
+        {"alpha", 1.0},
+        {"beta", 0.0},
+        {"sigma", 0.0},
+        {"iterations", 80},
+        {"epsilon", 0.4},
+        {"store_every", 80},
+        {"description", "Moving square linearly."},
+        {"output_folder", "translation/linear"},
+        {"source_image", source_filename},
+        {"target_image", target_filename}
+      };
+      nlohmann::json j_run = {
+        {"run_linear", j_linear}
+      };
+
+      // NOTE: std::setw makes the output add spaces to be more human readable
+      std::ofstream fp(json_filename);
+      if (fp)
+        fp << std::setw(4) << j_run;
+    }
+
 
     inline void print_instructions_skew()
     {
@@ -98,6 +185,11 @@ namespace examples {
     inline void print_instructions_density()
     {
         printf("Usage:\n   ./solver --json example_density.json\nConfigure the example by changing default values in the .json file.\n");
+    }
+
+    inline void print_instructions_translate()
+    {
+        printf("Usage:\n   ./solver --json example_translate.json\nConfigure the example by changing default values in the .json file.\n");
     }
 
     inline std::tuple<dGrid, dGrid> create_density_maps(const ConfigDensity& cfg)
