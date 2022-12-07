@@ -374,8 +374,8 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
     image_gradient_2d<<<blocks,threads>>>(d_I, d_dIdy, d_dIdx, w, h);
 
-    FullJmap<<<NX,1>>>(d_Jy, d_Jx, d_I, d_I0, d_dIdy, d_dIdx, m_sigma, NX);
-    // returns   -(I-I0)*dI + sigma*( Jmapping );
+    FullJmap<<<NX,1>>>(d_Jy, d_Jx, d_I, d_I1, d_dIdy, d_dIdx, m_sigma, NX);
+    // returns   -(I-I1)*dI + sigma*( Jmapping );
 
     PointwiseScale<<<NX,1>>>(d_Jy, NX, epsilon);
     PointwiseScale<<<NX,1>>>(d_Jx, NX, epsilon);
