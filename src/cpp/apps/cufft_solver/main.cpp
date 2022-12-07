@@ -153,9 +153,9 @@ float* combine_warp(const float* dx, const float* dy, const int nrow, const int 
       }
     }
   }
-  float *fret = reinterpret_cast<float *>( malloc(sizeof(float)*nrow*ncol) );
-  for (int r=0; r<nrow; ++r) {
-    for (int c=0; c<ncol; ++c) {
+  float *fret = reinterpret_cast<float *>( malloc(sizeof(float)*cResolutionMultiplier*cResolutionMultiplier*nrow*ncol) );
+  for (int r=0; r<cResolutionMultiplier*nrow; ++r) {
+    for (int c=0; c<cResolutionMultiplier*ncol; ++c) {
       fret[r*ncol+c] = ret[c][r];
     }
   }
