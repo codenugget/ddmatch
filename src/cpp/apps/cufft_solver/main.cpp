@@ -172,8 +172,8 @@ dGrid combine_warp(const float* dx, const float* dy, const int nrow, const int n
       fret[r*ncol+c] = ret[c][r];
     }
   }
-  return ret;
 */
+  return ret;
 }
 
 
