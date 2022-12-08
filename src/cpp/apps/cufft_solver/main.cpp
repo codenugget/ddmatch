@@ -30,6 +30,17 @@
 
 namespace fs = std::filesystem;
 
+
+bool save_image_dGrid(const dGrid& grid, const fs::path& filename) {
+  const double cZeroLimit = 1e-3;
+  std::cout << "Saving: " << filename << "\n";
+  auto img = utils::to_image(grid, utils::EConversion::Linearize_To_0_1_Range, cZeroLimit);
+  const auto [ok, msg] = ImageLib::save(img.get(), filename.string());
+  if (!ok)
+    std::cerr << "ERROR: " << msg << "\n";
+  return ok;
+}
+
 bool save_image(const float* arr, const int w, const int h, const fs::path& filename) {
   const double cZeroLimit = 1e-3;
   std::cout << "Saving: " << filename << "\n";
@@ -119,7 +130,7 @@ void drawline(dGrid& target, double r0, double c0, double r1, double c1, double 
   }
 }
 
-float* combine_warp(const float* dx, const float* dy, const int nrow, const int ncol,
+dGrid combine_warp(const float* dx, const float* dy, const int nrow, const int ncol,
                    const int cDivider, const double cResolutionMultiplier) {
   // xphi[:,skip::skip]      - rows: keep all rows,                                         columns: start at skip, loop until end and increment with skip
   // xphi[skip::skip, ::1]   - rows: start at skip, loop until end and increment with skip, columns: keep all columns
@@ -153,13 +164,16 @@ float* combine_warp(const float* dx, const float* dy, const int nrow, const int 
       }
     }
   }
+/*
+  // Copy ret to float array
   float *fret = reinterpret_cast<float *>( malloc(sizeof(float)*cResolutionMultiplier*cResolutionMultiplier*nrow*ncol) );
   for (int r=0; r<cResolutionMultiplier*nrow; ++r) {
     for (int c=0; c<cResolutionMultiplier*ncol; ++c) {
       fret[r*ncol+c] = ret[c][r];
     }
   }
-  return fret;
+  return ret;
+*/
 }
 
 
@@ -213,10 +227,10 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::Confi
 
   double scale_image = 4.0;
   auto warped = combine_warp(dfm->phi_x(), dfm->phi_y(), dfm->rows(), dfm->cols(), 64, scale_image);
-  save_image(warped, dfm->cols(), dfm->rows(), overview_path / "forward_warp.png");
+  save_image_dGrid(warped, overview_path / "forward_warp.png");
   std::cout << "Figures saved.1\n";
   warped = combine_warp(dfm->phi_inv_x(), dfm->phi_inv_y(), dfm->rows(), dfm->cols(), 64, scale_image);
-  save_image(warped, dfm->cols(), dfm->rows(), overview_path / "backward_warp.png");
+  save_image_dGrid(warped, overview_path / "backward_warp.png");
   std::cout << "Figures saved.\n";
 }
 
