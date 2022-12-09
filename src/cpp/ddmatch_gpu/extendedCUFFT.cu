@@ -38,6 +38,8 @@ static __device__ __host__ inline void periodic_1d_shift(int&, int&, int&, int&,
 static __global__ inline void CreateIdentity(float*, float*);
 static __global__ inline void SetVal(float*, const float, const int);
 static __global__ inline void CopyTo(float*, const float*, const int);
+static __global__ inline void CopyR2C(Complex*, const float*, const int);
+static __global__ inline void CopyC2R(float*, const Complex*, const int);
 static __global__ inline void PointwiseScale(float*, int, float);
 static __global__ inline void PointwiseDiff(float*, const float*, const float*, const int);
 static __global__ inline void Complex_diffsq(float*, const Complex*, const Complex*, int);
@@ -173,7 +175,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
   float *h_idx, *h_idy;
   float *res;
   float* Linv;
-  Complex *odata, *odata_a, *odata_b;
+  Complex *odata, *odatax, *odatay;
   cufftHandle plan, planback;
 
 
@@ -266,9 +268,9 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaMalloc((void**)&d_Jy, sizeof(float)*NX);
   cudaMalloc((void**)&d_Jx, sizeof(float)*NX);
   cudaMalloc((void**)&res,  sizeof(float));
-  cudaMalloc((void**)&odata, sizeof(Complex)*(NX/2+1));
-  cudaMalloc((void**)&odata_a, sizeof(Complex)*(NX/2+1));
-  cudaMalloc((void**)&odata_b, sizeof(Complex)*(NX/2+1));
+  cudaMalloc((void**)&odata, sizeof(Complex)*NX);
+  cudaMalloc((void**)&odatay, sizeof(Complex)*NX);
+  cudaMalloc((void**)&odatax, sizeof(Complex)*NX);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to allocate memory on the GPU\n");
     return -1;
@@ -377,6 +379,58 @@ int extendedCUFFT::run(int niter, float epsilon) {
     FullJmap<<<NX,1>>>(d_Jy, d_Jx, d_I, d_I1, d_dIdy, d_dIdx, m_sigma, NX);
     // returns   -(I-I1)*dI + sigma*( Jmapping );
 
+    // Smoothing
+    CopyR2C<<<NX,1>>>(odatay, d_Jy, NX);
+    CopyR2C<<<NX,1>>>(odatax, d_Jx, NX);
+
+    // Perform Fourier transform
+    // cufftResult   cufftPlan2d(cufftHandle *plan, int nx, int ny, cufftType type);
+    if (cufftPlan2d(&plan, m_cols, m_rows, CUFFT_C2C) != CUFFT_SUCCESS){
+      fprintf(stderr, "CUFFT error: Plan creation failed");
+      return -1;
+    }
+    if (cufftExecC2C(plan, odatay, odatay, CUFFT_FORWARD) != CUFFT_SUCCESS){
+      fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
+      return -1;
+    }
+    if (cufftExecC2C(plan, odatax, odatax, CUFFT_FORWARD) != CUFFT_SUCCESS){
+      fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
+      return -1;
+    }
+    if (cudaDeviceSynchronize() != cudaSuccess){
+      fprintf(stderr, "Cuda error: Failed to synchronize after forward FFT\n");
+      return -1;
+    }
+
+    // Apply inverse of the smoothing operator (inertia operator)
+    MultComplexAndReal<<<NX, 1>>>(odatay, Linv, NX); 
+    MultComplexAndReal<<<NX, 1>>>(odatax, Linv, NX);
+    //PointwiseScale<<<NX, 1>>>(data, NX, 1.0f / 2);
+
+    if (cudaGetLastError() != cudaSuccess){
+      fprintf(stderr, "Cuda error: Failed to multiply data with Linv\n");
+      return -1;	
+    }
+    if (cufftExecC2C(plan, odatay, odatay, CUFFT_INVERSE) != CUFFT_SUCCESS){
+      fprintf(stderr, "CUFFT error: cufftExecC2C Backward failed");
+      return -1;
+    }
+    if (cufftExecC2C(plan, odatax, odatax, CUFFT_INVERSE) != CUFFT_SUCCESS){
+      fprintf(stderr, "CUFFT error: cufftExecC2C Backward failed");
+      return -1;
+    }
+    if (cudaDeviceSynchronize() != cudaSuccess){
+     fprintf(stderr, "Cuda error: Failed to synchronize after inverse FFT\n");
+     return -1;	
+    }	
+    // Divide by number of elements in data set to get back original data
+    ComplexPointwiseScale<<<NX, 1>>>(odatax, NX, 1.0f / NX);
+    ComplexPointwiseScale<<<NX, 1>>>(odatay, NX, 1.0f / NX);
+
+    CopyC2R<<<NX,1>>>(d_Jy, odatay, NX);
+    CopyC2R<<<NX,1>>>(d_Jx, odatax, NX);
+
+    // Newton forward steps with step size = epsilon
     PointwiseScale<<<NX,1>>>(d_Jy, NX, epsilon);
     PointwiseScale<<<NX,1>>>(d_Jx, NX, epsilon);
     if (cudaGetLastError() != cudaSuccess){
@@ -573,8 +627,8 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaFree(res);
   cudaFree(data);
   cudaFree(odata);
-  cudaFree(odata_a);
-  cudaFree(odata_b);
+  cudaFree(odatax);
+  cudaFree(odatay);
   cufftDestroy(plan);
   cufftDestroy(planback);
 
@@ -925,6 +979,26 @@ static __global__ inline void CreateIdentity(float *xphi, float *yphi) {
     yphi[i] = (float) (i % w);  // col
   }
 */
+}
+
+
+static __global__ inline void CopyR2C(Complex *z, const float *x, const int size) {
+  // Copy real input x to the real part of output z.
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < size; i += numThreads) {
+    z[i].x = x[i];
+    z[i].y = 0.0f;
+  }
+}
+
+static __global__ inline void CopyC2R(float *x, const Complex *z, const int size) {
+  // Copy real part of z to output x.
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < size; i += numThreads) {
+    x[i] = z[i].x;
+  }
 }
 
 static __global__ inline void Complex_diffsq(float *res, const Complex *a, const Complex *b, int size) {
