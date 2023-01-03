@@ -177,6 +177,25 @@ dGrid combine_warp(const float* dx, const float* dy, const int nrow, const int n
 }
 
 
+void save_state(extendedCUFFT* dfm, const fs::path& folder_path) {
+  // NOTE: define what range we regard to be "almost 0" (cZeroLimit)
+  // NEW BELOW
+  fs::create_directories(folder_path);
+
+  save_image(dfm->target(), dfm->cols(), dfm->rows(), folder_path / "target.png");
+  save_image(dfm->source(), dfm->cols(), dfm->rows(), folder_path / "template.png");
+  save_image(dfm->warped(), dfm->cols(), dfm->rows(), folder_path / "warped.png");
+
+  double scale_image = 4.0;
+  auto warped = combine_warp(dfm->phi_x(), dfm->phi_y(), dfm->rows(), dfm->cols(), 64, scale_image);
+  save_image_dGrid(warped, folder_path / "forward_warp.png");
+  std::cout << "Figures saved. new\n";
+  warped = combine_warp(dfm->phi_inv_x(), dfm->phi_inv_y(), dfm->rows(), dfm->cols(), 64, scale_image);
+  save_image_dGrid(warped, folder_path / "backward_warp.png");
+  std::cout << "Figures saved. new backward\n";
+}
+
+
 void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::ConfigRun& cfg) {
   std::cout << "Initializing: " << cfg.output_folder_ << "\n";
   float alpha = (float) cfg.alpha_;
@@ -214,6 +233,25 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::Confi
   fs::create_directories(overview_path);
   fs::create_directories(steps_path);
 
+  int loop_iters = cfg.store_every_;
+  int num_steps = num_iters / loop_iters;
+  int rest_iters = num_iters % loop_iters;
+
+  for (int s = 0; s < num_steps; ++s) {
+    dfm->run(loop_iters, epsilon);
+    std::string sub = std::to_string(loop_iters * (s+1));
+    save_state(dfm.get(), steps_path / sub);
+  }
+  if (rest_iters > 0) {
+    dfm->run(rest_iters, epsilon);
+    save_state(dfm.get(), steps_path / std::to_string(num_iters));
+  }
+  printf("%s: Creating plots\n", overview_path.string().c_str());
+
+  save_state(dfm.get(), overview_path);
+  save_energy(dfm->energy(), num_iters, overview_path);
+
+/*
   dfm->run(num_iters, epsilon);
 
   save_energy(dfm->energy(), num_iters, overview_path);
@@ -231,7 +269,7 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::Confi
   std::cout << "Figures saved.1\n";
   warped = combine_warp(dfm->phi_inv_x(), dfm->phi_inv_y(), dfm->rows(), dfm->cols(), 64, scale_image);
   save_image_dGrid(warped, overview_path / "backward_warp.png");
-  std::cout << "Figures saved.\n";
+  std::cout << "Figures saved.\n"; */
 }
 
 /*
