@@ -8,6 +8,7 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 #include "extendedCUFFT.h"
+#include "utils/cuda_error_macros.cuh"  // To complete..
 
 #define IMAGESIZE 16
 #define THREADS_PER_BLOCK 32
@@ -25,28 +26,25 @@ Next steps:
 static __host__ inline void create_idmap(float*, float*, const int, const int);
 
 static __host__ __device__ inline float RealScale(float, float); 
-static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);
+//static __device__ __host__ inline Complex ComplexAdd(Complex, Complex);
 static __device__ __host__ inline Complex ComplexScale(Complex, float);
-static __device__ __host__ inline float row_position(int, int);
-static __device__ __host__ inline float col_position(int, int);
-static __device__ __host__ inline float diff_square(Complex, Complex);
+//static __device__ __host__ inline float diff_square(Complex, Complex);
 //static __device__ __host__ inline float dot_sum(float, float);
 static __device__ __host__ inline void periodic_1d(int&, int&, float&, const float&, const int&);
 static __device__ __host__ inline void periodic_1d_shift(int&, int&, int&, int&, float&, const float&, const int&);
 
 //static __global__ void Loop(float, float, float, const double, const int);
-static __global__ inline void CreateIdentity(float*, float*);
-static __global__ inline void SetVal(float*, const float, const int);
+//static __global__ inline void SetVal(float*, const float, const int);
 static __global__ inline void CopyTo(float*, const float*, const int);
 static __global__ inline void CopyR2C(Complex*, const float*, const int);
 static __global__ inline void CopyC2R(float*, const Complex*, const int);
 static __global__ inline void PointwiseScale(float*, int, float);
 static __global__ inline void PointwiseDiff(float*, const float*, const float*, const int);
-static __global__ inline void Complex_diffsq(float*, const Complex*, const Complex*, int);
+//static __global__ inline void Complex_diffsq(float*, const Complex*, const Complex*, int);
 static __global__ inline void ComplexPointwiseScale(Complex*, int, float);
 static __global__ inline void MultComplexAndReal(Complex*, Real*, const int);
 static __global__ inline void Norm2(float*, const float*, const float*, const int, const int);
-static __global__ inline void Diffsq(float*, const float*, const float*, int);
+//static __global__ inline void Diffsq(float*, const float*, const float*, int);
 static __global__ inline void Dotsum(float*, const float*, const float*, const float*, const float*, int);
 // Question: What is the meaning of inline?
 static __global__ inline void image_gradient_2d(const float*, float*, float*, const int, const int);
@@ -61,16 +59,18 @@ std::tuple<std::unique_ptr<extendedCUFFT>, std::string> extendedCUFFT::create(
     const float* source, const float* target,
     int nrow, int ncol,
     float alpha, float beta, float sigma,
+    int niter,
     bool compute_phi) {
   // Check input
   // TODO: size check
   if (sigma < 0)
     return std::make_tuple(nullptr, "Paramter sigma must be positive");
 
-  auto ret = std::unique_ptr<extendedCUFFT>(new extendedCUFFT(source, target, nrow, ncol, alpha, beta, sigma, compute_phi));
+  auto ret = std::unique_ptr<extendedCUFFT>(new extendedCUFFT(source, target, nrow, ncol, alpha, beta, sigma, niter, compute_phi));
   ret->setup();
   return std::make_tuple(std::move(ret), "");
 }
+
 
 // Momentum vector
 void kvec(float* k, const int N) {
@@ -104,6 +104,14 @@ void linv(float* Linv, const float* ka, const float* kb, const float alpha, cons
   }
 }
 
+int extendedCUFFT::test() {
+  if (cudaGetLastError() != cudaSuccess){
+    fprintf(stderr, " ***!#? Cuda error in extendedCUFFT::test, which only checks for CUDA errors\n");
+    return -1;	
+  }
+  fprintf(stderr, " *** Cuda success in extendedCUFFT::test, which only checks for CUDA errors\n");
+  return 0;
+}
 
 void extendedCUFFT::setup() {
 /*
@@ -120,6 +128,10 @@ void extendedCUFFT::setup() {
   m_phiy = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   m_phiinvx = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   m_phiinvy = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
+  m_E = reinterpret_cast<float *>( malloc(sizeof(float)*m_niter) );
+
+  for (int i = 0; i < m_niter; i+=1)
+    m_E[i] = 0.0f;  // TODO: Copy to this. Problem: different sizes, locate start index
 
   for (int i = 0; i < NX; i+=1) {
     m_phiy[i]    = i / m_cols;  // row
@@ -140,111 +152,125 @@ void extendedCUFFT::setup() {
   m_multipliers = (float*) malloc( sizeof(float)*m_rows*m_cols );
   linv(m_multipliers, ky, kx, m_alpha, m_beta, m_rows, m_cols);
 
-}
-
-
-int extendedCUFFT::run(int niter, float epsilon) {
-  /*
-  Basic usage of real-to-complex 1D Fourier transform.
-  */
-
-  // Constants
-  const int w = m_cols;
-  const int h = m_rows;
-  const int NX = m_rows*m_cols;
-  
-  // Declare device variables
-  float* d_I;
-  float* d_I0;
-  float* d_I1;
-  float* d_phiinvy;
-  float* d_phiinvx;
-  float* d_phiy;
-  float* d_phix;
-  float* d_E;
-  float* d_idx;
-  float* d_idy;
-  float  d_kE;
-
-  float* d_Xy;
-  float* d_Xx;
-
-  float *data;
-  float *tmpx, *tmpy, *phiinvx, *phiinvy;
-  float *idx, *idy;
-  float *h_idx, *h_idy;
-  float *res;
-  float* Linv;
-  Complex *odata, *odatax, *odatay;
-  cufftHandle plan, planback;
-
-
-
-  // Initialize
+  // Initialize identity maps
   idx = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   idy = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  create_idmap(idx, idy, w, h);
+  create_idmap(idx, idy, m_cols, m_rows);
 
   h_idx = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
   h_idy = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  create_idmap(h_idx, h_idy, w, h);
-  /*
-  I = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  I0 = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  for (unsigned int i = 0; i < NX; ++i) {
-    I[i] = 1.0f;
-    I0[i] = 1.0f;
-  }
-  */
-
-  // Allocate host memory for the signal 
-  m_E = reinterpret_cast<float *>( malloc(sizeof(float)*niter) );
-  float *h_signal = reinterpret_cast<float *>( malloc(sizeof(float)*NX) );
-  Complex *h_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
-  Complex *Ja_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
-  Complex *Jb_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
-
-  // Initialize the memory for the signal
-  for (unsigned int i = 0; i < NX; ++i) {
-    h_signal[i] = exp(-(double)i/NX);
-  }
-  /*
-  printf("Check initialization:\n");
-  printf("idx[0:10] = ");
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("%f ",idx[i]);
-  }
-  printf("\nidx[16:26] = ");
-  for (unsigned int i = w; i < w+10; ++i) {
-    printf("%f ",idx[i]);
-  }
-  printf("\n");
-  */
+  create_idmap(h_idx, h_idy, m_cols, m_rows);
 
   // Allocate device memory
+  cudaMalloc((void**)&d_data, sizeof(float)*NX);
   cudaMalloc((void**)&d_I0, sizeof(float)*NX);
   cudaMalloc((void**)&d_I1, sizeof(float)*NX);
   cudaMalloc((void**)&d_I,  sizeof(float)*NX);
   cudaMalloc((void**)&d_phiinvy, sizeof(float)*NX);
   cudaMalloc((void**)&d_phiinvx, sizeof(float)*NX);
-  cudaMalloc((void**)&d_Xy, sizeof(float)*NX);
-  cudaMalloc((void**)&d_Xx, sizeof(float)*NX);
   cudaMalloc((void**)&d_phiy, sizeof(float)*NX);
   cudaMalloc((void**)&d_phix, sizeof(float)*NX);
-  cudaMalloc((void**)&d_E, sizeof(float)*niter);
-  cudaMalloc((void**)&d_kE, sizeof(float) );
-
+  cudaMalloc((void**)&d_E, sizeof(float)*m_niter);
   cudaMalloc((void**)&d_idx, sizeof(float)*NX);
   cudaMalloc((void**)&d_idy, sizeof(float)*NX);
+  cudaMalloc((void**)&d_Xy, sizeof(float)*NX);
+  cudaMalloc((void**)&d_Xx, sizeof(float)*NX);
+  cudaMalloc((void**)&d_Jy, sizeof(float)*NX);
+  cudaMalloc((void**)&d_Jx, sizeof(float)*NX);
+  cudaMalloc((void**)&d_dIdy, sizeof(float)*NX);  // image gradient
+  cudaMalloc((void**)&d_dIdx, sizeof(float)*NX);
   cudaMalloc((void**)&data, sizeof(float)*NX);
   cudaMalloc((void**)&tmpx, sizeof(float)*NX);
   cudaMalloc((void**)&tmpy, sizeof(float)*NX);
   cudaMalloc((void**)&phiinvx, sizeof(float)*NX);
   cudaMalloc((void**)&phiinvy, sizeof(float)*NX);
   cudaMalloc((void**)&Linv, sizeof(float)*NX);
-  cudaMalloc((void**)&d_I,  sizeof(float)*NX);  // Q: is it okay to call these m_I, etc, or should we drop m_?
-  cudaMalloc((void**)&d_dIdy, sizeof(float)*NX);  // image gradient
-  cudaMalloc((void**)&d_dIdx, sizeof(float)*NX);
+  cudaMalloc((void**)&res,  sizeof(float));
+
+  // Copy signal to device
+  cudaMemcpy(d_idy, idy, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_idx, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_I0, m_source, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_I1, m_target, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_I,  m_source, sizeof(float)*NX, cudaMemcpyHostToDevice);       //TODO: read from image
+  cudaMemcpy(d_phiinvy, m_phiinvy, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_phiinvx, m_phiinvx, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(phiinvx, m_phiinvx, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(phiinvy, m_phiinvy, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  cudaMemcpy(Linv, m_multipliers, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  //cudaMemcpy(d_data, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
+  if (cudaGetLastError() != cudaSuccess){
+    fprintf(stderr, " <extendedCUFFT::test()> Cuda error: Failed to copy data to GPU\n");
+    return;	
+  }
+}
+
+
+// Define the destructor.
+extendedCUFFT::~extendedCUFFT() {
+  cudaFree(d_data);
+  cudaFree(d_I);
+  cudaFree(d_I0);
+  cudaFree(d_I1);
+  cudaFree(d_phiinvy);
+  cudaFree(d_phiinvx);
+  cudaFree(d_phiy);
+  cudaFree(d_phix);
+  cudaFree(d_E);
+  cudaFree(d_idx);
+  cudaFree(d_idy);
+  cudaFree(d_Xy);
+  cudaFree(d_Xx);
+  cudaFree(d_Jy);
+  cudaFree(d_Jx);
+  cudaFree(d_dIdy);
+  cudaFree(d_dIdx);
+
+  cudaFree(data);
+  cudaFree(tmpx);
+  cudaFree(tmpy);
+  cudaFree(phiinvx);
+  cudaFree(phiinvy);
+  free(idx);
+  free(idy);
+  free(h_idx);
+  free(h_idy);
+  free(res);
+  cudaFree(Linv);
+  free(m_multipliers);
+  free(m_E);
+}
+
+
+int extendedCUFFT::run(int niter, float epsilon) {
+  /*
+  Perform diffeomorphic matching
+  */
+  cudaError_t err = cudaDeviceSynchronize();
+  if (err != cudaSuccess){
+    printf(" ***#?! CUDA error upon entering run. Message: %s\n", cudaGetErrorString(err));
+    return -1;	
+  }
+  // Constants
+  const int w = m_cols;
+  const int h = m_rows;
+  const int NX = m_rows*m_cols;
+  
+  // Declare device variables
+  Complex *odata, *odatax, *odatay;
+  cufftHandle plan;
+
+  // Allocate host memory for the signal 
+  Complex *h_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+  Complex *Ja_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+  Complex *Jb_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
+
+  if (cudaGetLastError() != cudaSuccess){
+    fprintf(stderr, "Cuda error: Failed to allocate memory on the CPU\n");
+    return -1;	
+  }
+
+  // Allocate device memory
   cudaMalloc((void**)&m_aa, sizeof(float)*NX);  // diffeo gradient
   cudaMalloc((void**)&m_ab, sizeof(float)*NX);  // m_ab = dphi_a / db
   cudaMalloc((void**)&m_ba, sizeof(float)*NX);
@@ -265,9 +291,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaMalloc((void**)&m_dhabdb, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhbadb, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhbbdb, sizeof(float)*NX);
-  cudaMalloc((void**)&d_Jy, sizeof(float)*NX);
-  cudaMalloc((void**)&d_Jx, sizeof(float)*NX);
-  cudaMalloc((void**)&res,  sizeof(float));
+  cudaMalloc((void**)&h_E, sizeof(float)*niter);
   cudaMalloc((void**)&odata, sizeof(Complex)*NX);
   cudaMalloc((void**)&odatay, sizeof(Complex)*NX);
   cudaMalloc((void**)&odatax, sizeof(Complex)*NX);
@@ -276,28 +300,13 @@ int extendedCUFFT::run(int niter, float epsilon) {
     return -1;
   }
 
-  // Copy signal to device
-  cudaMemcpy(d_idy, idy, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_idx, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_I0, m_source, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_I1, m_target, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_I,  m_source, sizeof(float)*NX, cudaMemcpyHostToDevice);       //TODO: read from image
-  cudaMemcpy(d_phiinvy, m_phiinvy, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_phiinvx, m_phiinvx, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(phiinvx, m_phiinvx, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(phiinvy, m_phiinvy, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(data, h_signal, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(tmpx, h_signal, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(Linv, m_multipliers, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed to copy data to GPU\n");
-    return -1;	
-  }
+  // checkLastCUDAError("<run> cudaMalloc");  // To complete..
+
+
 
   // initialize itentity mapping
   //dim3 blocks(NX/16,NX/16);
   //dim3 threads(16,16);
-  //CreateIdentity<<<blocks,threads>>>(d_idx, d_idy);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to initialize diffeomorphisms on GPU\n");
     return -1;
@@ -330,21 +339,15 @@ int extendedCUFFT::run(int niter, float epsilon) {
   for (int k=0; k<niter; ++k) {
 
     image_compose_2d<<<blocks,threads>>>(d_I0, d_phiinvx, d_phiinvy, d_I, w, h);
-    //cudaDeviceSynchronize();
-    //if (cudaGetLastError() != cudaSuccess){
-    //  fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU 1\n");
-    //  return -1;
-    //}
 
     Norm2<<<NX,1>>>(d_E, d_I1, d_I, k, NX);  // returns sum( (I1-I)^2 ) 
-    //SetVal<<<1,1>>>(d_E, d_kE, k);
 
     diffeo_gradient_x_2d<<<blocks,threads>>>(d_phiinvx, m_bb, m_ba, w, h);
     diffeo_gradient_y_2d<<<blocks,threads>>>(d_phiinvy, m_ab, m_aa, w, h);
-    //image_compose_2d<<<blocks,threads>>>(I, tmpx, tmpy, I0, w, h);
-    if (cudaGetLastError() != cudaSuccess){
-      fprintf(stderr, "Cuda error: Failed to compose image with diffeo on GPU\n");
-      return -1;
+    err = cudaGetLastError();
+    if (err != cudaSuccess){
+      printf(" ***#?! CUDA error. Failed to compose image with diffeo on GPU. Message: %s\n", cudaGetErrorString(err));
+      return -1;	
     }
 
   //  Decide whether to use indexing (a,b) or (y,x) 
@@ -365,14 +368,14 @@ int extendedCUFFT::run(int niter, float epsilon) {
     //      df_a[i*w + j] = (img[(i+1)*w+j] - img[(i-1)*w+j])/2.0f;
     //      df_b[i*w + j] = (img[i*w + j+1] - img[i*w + j-1])/2.0f;
 
-/*
-    Jmapping<<<num_threads,1>>>(d_Jy, d_Jx, 
+
+    Jmapping<<<NX,1>>>(d_Jy, d_Jx, 
        m_haa,    m_hab,    m_hba,    m_hbb, 
        m_gaa,    m_gab,    m_gba,    m_gbb, 
        m_dhaada, m_dhabda, m_dhbada, m_dhbbda, 
        m_dhaadb, m_dhabdb, m_dhbadb, m_dhbbdb, 
        NX);
-*/
+
 
     image_gradient_2d<<<blocks,threads>>>(d_I, d_dIdy, d_dIdx, w, h);
 
@@ -429,6 +432,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
     CopyC2R<<<NX,1>>>(d_Jy, odatay, NX);
     CopyC2R<<<NX,1>>>(d_Jx, odatax, NX);
+    // Smoothing with FFT done here.
 
     // Newton forward steps with step size = epsilon
     PointwiseScale<<<NX,1>>>(d_Jy, NX, epsilon);
@@ -446,85 +450,15 @@ int extendedCUFFT::run(int niter, float epsilon) {
     CopyTo<<<NX,1>>>(d_phiinvy, tmpy, NX);
     CopyTo<<<NX,1>>>(d_phiinvx, tmpx, NX);
 
- /*
-  // TODO: configure smoothing routine, introduce alpha and beta, create k-vector
-  cudaMemcpy(tmpy, d_Jy, sizeof(float)*NX, cudaMemcpyHostToDevice);
-  cudaMemcpy(tmpx, d_Jx, sizeof(float)*NX, cudaMemcpyHostToDevice);
-
-  // perform Fourier transform
-  if (cufftPlan1d(&plan, NX, CUFFT_R2C, BATCH) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: Plan creation failed");
-    return -1;
-  }
-  // Identical pointers to input and output arrays implies in-place transformation
-  // cufftExecR2C(cufftHandle plan, cufftReal *idata, cufftComplex *odata);
-  if (cufftExecR2C(plan, reinterpret_cast<cufftReal *>(data), reinterpret_cast<cufftComplex *>(odata)) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
-    return -1;
-  }
-  if (cufftExecR2C(plan, reinterpret_cast<cufftReal *>(tmpy), reinterpret_cast<cufftComplex *>(odata_a)) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
-    return -1;
-  }
-  if (cufftExecR2C(plan, reinterpret_cast<cufftReal *>(tmpx), reinterpret_cast<cufftComplex *>(odata_b)) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
-    return -1;
-  }
-  if (cudaDeviceSynchronize() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed to synchronize\n");
-    return -1;
-  }
-  // Divide by number of elements in data set to get back original data
-  ComplexPointwiseScale<<<1, 1>>>(odata, NX/2+1, 1.0f / 2);
-  MultComplexAndReal<<<1, 1>>>(odata_a, Linv, NX/2+1); 
-  MultComplexAndReal<<<1, 1>>>(odata_b, Linv, NX/2+1);
-  PointwiseScale<<<1, 1>>>(data, NX, 1.0f / 2);
-  
-  if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
-    return -1;	
-  }
-
-  // TODO
-  // Inverse transform CUFFT to get back momentum mapping
-  if (cufftPlan1d(&planback, NX/2+1, CUFFT_C2R, BATCH) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: Plan creation failed");
-    return -1;
-  }
-  if (cufftExecC2R(planback, reinterpret_cast<cufftComplex *>(odata_a), reinterpret_cast<cufftReal *>(tmpy)) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
-    return -1;
-  }
-  if (cufftExecC2R(planback, reinterpret_cast<cufftComplex *>(odata_b), reinterpret_cast<cufftReal *>(tmpx)) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
-    return -1;
-  }
-  if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed Fourier inverse transform\n");
-    return -1;
-  }
-  
-  // Difference squared
-  //Diffsq<<<1,256>>>(res, data, tmpx, NX);
-  //if (cudaGetLastError() != cudaSuccess){
-  //  fprintf(stderr, "Cuda error: Failed to compute difference squared\n");
-  //  return -1;
-  //}
-*/
-
- // TODO
-  //Norm2<<<num_threads,1>>>(d_E[k], d_I, d_I0, NX);
-  
     cudaDeviceSynchronize();
   } //for k<niter
 
   cudaMemcpy(h_idy, d_idy, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(h_idx, d_idx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
-  cudaMemcpy(m_E, d_E, sizeof(float)*niter, cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_E, d_E, sizeof(float)*niter, cudaMemcpyDeviceToHost);
   cudaMemcpy(m_phiinvy, d_phiinvy, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(m_phiinvx, d_phiinvx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   //cudaMemcpy(h_result, odata_a, sizeof(Complex)*(NX/2+1), cudaMemcpyDeviceToHost);
-  //cudaMemcpy(h_signal, tmpx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
     return -1;
@@ -550,58 +484,17 @@ int extendedCUFFT::run(int niter, float epsilon) {
   for (unsigned int i = 0; i < 10; ++i) {
     printf("h_result[%d].x = %f\n", i, h_result[i].x);
   }
-  // ...and this
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("h_signal[%d].x = %f\n", i, h_signal[i]);
-  }
 */
   
   cudaMemcpy(m_I, d_I, sizeof(float)*NX, cudaMemcpyDeviceToHost);
-  //cudaMemcpy(h_signal, tmpx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
     return -1;
   }
 
-
-
-/* ---from header---
-  const Real* target()    const { return m_target; }   //const
-  const Real* source()    const { return m_source; }   //const 
-  const Real* warped()    const { return m_I; }        // COPY THIS
-  const Real* phi_x()     const { return m_phix; }     // COPY THIS
-  const Real* phi_y()     const { return m_phiy; }     // COPY THIS
-  const Real* phi_inv_x() const { return phiinvx; }    // COPY THIS
-  const Real* phi_inv_y() const { return phiinvy; }    // COPY THIS
-  const Real* energy()    const { return m_E; }        // COPY THIS
-*/
-
   // cleanup memory
-  free(h_signal);
   free(h_result);
-  free(idx);
-  free(idy);
-  //free(m_sigma);
-  cudaFree(d_I0);
-  cudaFree(d_I1);
-  cudaFree(d_I);
-  cudaFree(d_phiinvy);
-  cudaFree(d_phiinvx);
-  cudaFree(d_phiy);
-  cudaFree(d_phix);
-  cudaFree(d_E);
-  cudaFree(d_idx);
-  cudaFree(d_idy);
-  cudaFree(d_Xy);
-  cudaFree(d_Xx);
-  cudaFree(tmpx);
-  cudaFree(tmpy);
-  cudaFree(phiinvx);
-  cudaFree(phiinvy);
-  cudaFree(Linv);
-  cudaFree(d_I);
-  cudaFree(d_dIdy);
-  cudaFree(d_dIdx);
+
   cudaFree(m_aa);
   cudaFree(m_ab);
   cudaFree(m_ba);
@@ -622,15 +515,12 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaFree(m_dhabdb);
   cudaFree(m_dhbadb);
   cudaFree(m_dhbbdb);
-  cudaFree(d_Jy);
-  cudaFree(d_Jx);
-  cudaFree(res);
-  cudaFree(data);
+  cudaFree(h_E);
+
   cudaFree(odata);
   cudaFree(odatax);
   cudaFree(odatay);
   cufftDestroy(plan);
-  cufftDestroy(planback);
 
   //exit extendedCUFFT::run
   return 0;
@@ -913,12 +803,7 @@ static __host__ __device__ inline float RealScale(float a, float s) {
 }
 
 // Complex addition
-static __device__ __host__ inline Complex ComplexAdd(Complex a, Complex b) {
-  Complex c;
-  c.x = a.x + b.x;
-  c.y = a.y + b.y;
-  return c;
-}
+// nothing here..
 
 // Complex scale
 static __host__ __device__ inline Complex ComplexScale(Complex a, float s) {
@@ -928,30 +813,13 @@ static __host__ __device__ inline Complex ComplexScale(Complex a, float s) {
   return c;
 }
 
-static __device__ __host__ inline float row_position(int a, int w) {
-  float row;
-  int r = w / a;
-  row = static_cast<float> ( r );
-  return row;
-}
 
-static __device__ __host__ inline float col_position(int a, int w) {
-  float col;
-  int c = w % a;
-  col = static_cast<float> ( c );
-  return col;
-}
-
-/*
-static __device__ __host__ inline float dot_sum(float x, float y) {
-  return x*x + y*y;
-}*/
 
 // Difference squared
-static __device__ __host__ inline float diff_square(Complex a, Complex b) {
-  float d = (a.x-b.x)*(a.x-b.x) + (a.y-b.y)*(a.y-b.y);
-  return d;
-}
+//static __device__ __host__ inline float diff_square(Complex a, Complex b) {
+//  float d = (a.x-b.x)*(a.x-b.x) + (a.y-b.y)*(a.y-b.y);
+//  return d;
+//}
 
 static __host__ inline void create_idmap(float *xphi, float *yphi, const int w, const int h) {
   const int size = w*h;
@@ -961,7 +829,7 @@ static __host__ inline void create_idmap(float *xphi, float *yphi, const int w, 
   }
 }
 
-
+/*
 // initialize diffeomorphism: identity mapping
 // Problem, no "global index"
 static __global__ inline void CreateIdentity(float *xphi, float *yphi) {
@@ -970,7 +838,7 @@ static __global__ inline void CreateIdentity(float *xphi, float *yphi) {
   int offset = x + y * blockDim.x * gridDim.x;    // col + row * width
   xphi[offset] = static_cast<float> ( x );
   yphi[offset] = static_cast<float> ( y );
-/*
+
   const int size = w*h;
   const int numThreads = blockDim.x * gridDim.x;
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
@@ -978,8 +846,8 @@ static __global__ inline void CreateIdentity(float *xphi, float *yphi) {
     xphi[i] = (float) (i / w);  // row
     yphi[i] = (float) (i % w);  // col
   }
-*/
 }
+*/
 
 
 static __global__ inline void CopyR2C(Complex *z, const float *x, const int size) {
@@ -1001,19 +869,23 @@ static __global__ inline void CopyC2R(float *x, const Complex *z, const int size
   }
 }
 
+/*
 static __global__ inline void Complex_diffsq(float *res, const Complex *a, const Complex *b, int size) {
   const int numThreads = blockDim.x * gridDim.x;
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
   for (int i = threadID; i < size; i += numThreads)
     res[i] = diff_square(a[i], b[i]);
 }
+*/
 
+/*
 static __global__ inline void Diffsq(float *res, const float *a, const float *b, int size) {
   const int numThreads = blockDim.x * gridDim.x;
   const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
   for (int i = threadID; i < size; i += numThreads)
     res[i] = (a[i] - b[i])*(a[i] - b[i]);
 }
+*/
 
 static __global__ inline void Norm2(float* E, const float *a, const float *b, const int iter, const int size) {
   const int numThreads = blockDim.x * gridDim.x;
@@ -1086,9 +958,11 @@ static __global__ inline void Jmapping(float *resa, float *resb,
   }
 }
 
+/*
 static __global__ inline void SetVal(float *a, const float x, const int pos) {
   a[pos] = x;
 }
+*/
 
 static __global__ inline void CopyTo(float *a, const float *x, const int size) {
   const int numThreads = blockDim.x * gridDim.x;

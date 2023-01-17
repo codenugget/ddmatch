@@ -218,8 +218,8 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::Confi
 
   bool compute_phi = cfg.compute_phi_;
 
-
-  auto [dfm, msg] = extendedCUFFT::create(source, target, nrow, ncol, alpha, beta, sigma, compute_phi);
+  printf("Creating diffeo matching object: num_iters = %d\n", num_iters);
+  auto [dfm, msg] = extendedCUFFT::create(source, target, nrow, ncol, alpha, beta, sigma, num_iters, compute_phi);
   if (!dfm) {
     std::cerr << "ERROR: " << msg << "\n";
     return;
@@ -236,6 +236,8 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::Confi
   int loop_iters = cfg.store_every_;
   int num_steps = num_iters / loop_iters;
   int rest_iters = num_iters % loop_iters;
+
+  dfm->test();
 
   for (int s = 0; s < num_steps; ++s) {
     dfm->run(loop_iters, epsilon);
