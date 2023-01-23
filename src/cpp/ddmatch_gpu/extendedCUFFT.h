@@ -42,7 +42,7 @@ public:
   const Real* phi_y()     const { return m_phiy; }
   const Real* phi_inv_x() const { return m_phiinvx; }
   const Real* phi_inv_y() const { return m_phiinvy; }
-  const Real* energy()    const { return m_E; }
+  //const Real* energy()    const { return d_E; }
 
   int len()   { return m_rows*m_cols; }
   int rows()  { return m_rows; }
@@ -78,7 +78,7 @@ private:
   float* d_phiinvx;
   float* d_phiy;
   float* d_phix;
-  float* d_E;
+  //float* d_E;
   float* d_idx;
   float* d_idy;
   float* d_Xy;
@@ -100,7 +100,7 @@ private:
   Real *m_gaa, *m_gab, *m_gba, *m_gbb;
   Real *m_dhaada, *m_dhabda, *m_dhbada, *m_dhbbda;
   Real *m_dhaadb, *m_dhabdb, *m_dhbadb, *m_dhbbdb;
-  float *h_E;
+  //float *d_E;
 
   void setup();
 };

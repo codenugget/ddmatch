@@ -170,7 +170,7 @@ void extendedCUFFT::setup() {
   cudaMalloc((void**)&d_phiinvx, sizeof(float)*NX);
   cudaMalloc((void**)&d_phiy, sizeof(float)*NX);
   cudaMalloc((void**)&d_phix, sizeof(float)*NX);
-  cudaMalloc((void**)&d_E, sizeof(float)*m_niter);
+  //cudaMalloc((void**)&d_E, sizeof(float)*m_niter);
   cudaMalloc((void**)&d_idx, sizeof(float)*NX);
   cudaMalloc((void**)&d_idy, sizeof(float)*NX);
   cudaMalloc((void**)&d_Xy, sizeof(float)*NX);
@@ -206,8 +206,9 @@ void extendedCUFFT::setup() {
 }
 
 
-// Define the destructor.
+// Define the destructor.   ..or should we?
 extendedCUFFT::~extendedCUFFT() {
+/*
   cudaFree(d_data);
   cudaFree(d_I);
   cudaFree(d_I0);
@@ -216,7 +217,7 @@ extendedCUFFT::~extendedCUFFT() {
   cudaFree(d_phiinvx);
   cudaFree(d_phiy);
   cudaFree(d_phix);
-  cudaFree(d_E);
+  //cudaFree(d_E);  // Check if this should be here.
   cudaFree(d_idx);
   cudaFree(d_idy);
   cudaFree(d_Xy);
@@ -239,6 +240,7 @@ extendedCUFFT::~extendedCUFFT() {
   cudaFree(Linv);
   free(m_multipliers);
   free(m_E);
+*/
 }
 
 
@@ -251,6 +253,16 @@ int extendedCUFFT::run(int niter, float epsilon) {
     printf(" ***#?! CUDA error upon entering run. Message: %s\n", cudaGetErrorString(err));
     return -1;	
   }
+
+/*
+  cudaFree(d_E);
+  err = cudaDeviceSynchronize();
+  if (err != cudaSuccess){
+    printf(" ***#?! CUDA error upon freeing d_E. Message: %s\n", cudaGetErrorString(err));
+    return -1;	
+  }
+*/
+
   // Constants
   const int w = m_cols;
   const int h = m_rows;
@@ -291,7 +303,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaMalloc((void**)&m_dhabdb, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhbadb, sizeof(float)*NX);
   cudaMalloc((void**)&m_dhbbdb, sizeof(float)*NX);
-  cudaMalloc((void**)&h_E, sizeof(float)*niter);
+  //cudaMalloc((void**)&d_E, sizeof(float)*niter);
   cudaMalloc((void**)&odata, sizeof(Complex)*NX);
   cudaMalloc((void**)&odatay, sizeof(Complex)*NX);
   cudaMalloc((void**)&odatax, sizeof(Complex)*NX);
@@ -340,7 +352,14 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
     image_compose_2d<<<blocks,threads>>>(d_I0, d_phiinvx, d_phiinvy, d_I, w, h);
 
-    Norm2<<<NX,1>>>(d_E, d_I1, d_I, k, NX);  // returns sum( (I1-I)^2 ) 
+/*
+    Norm2<<<NX,1>>>(d_E, d_I1, d_I, k, NX);  // returns sum( (I1-I)^2 )
+    err = cudaGetLastError();
+    if (err != cudaSuccess){
+      printf(" ***#?! CUDA error. Failed to compute L2 energy in <extendedCUFFT::run>. Message: %s\n", cudaGetErrorString(err));
+      return -1;	
+    } 
+*/
 
     diffeo_gradient_x_2d<<<blocks,threads>>>(d_phiinvx, m_bb, m_ba, w, h);
     diffeo_gradient_y_2d<<<blocks,threads>>>(d_phiinvy, m_ab, m_aa, w, h);
@@ -455,7 +474,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
   cudaMemcpy(h_idy, d_idy, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(h_idx, d_idx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
-  cudaMemcpy(h_E, d_E, sizeof(float)*niter, cudaMemcpyDeviceToHost);
+  //cudaMemcpy(h_E, d_E, sizeof(float)*niter, cudaMemcpyDeviceToHost);
   cudaMemcpy(m_phiinvy, d_phiinvy, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(m_phiinvx, d_phiinvx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   //cudaMemcpy(h_result, odata_a, sizeof(Complex)*(NX/2+1), cudaMemcpyDeviceToHost);
@@ -515,7 +534,6 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaFree(m_dhabdb);
   cudaFree(m_dhbadb);
   cudaFree(m_dhbbdb);
-  cudaFree(h_E);
 
   cudaFree(odata);
   cudaFree(odatax);

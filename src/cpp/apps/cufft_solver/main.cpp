@@ -243,15 +243,17 @@ void run_and_save_example(const dGrid& I0, const dGrid& I1, config_solver::Confi
     dfm->run(loop_iters, epsilon);
     std::string sub = std::to_string(loop_iters * (s+1));
     save_state(dfm.get(), steps_path / sub);
+    //save_energy(dfm->energy(), loop_iters, steps_path / sub);
   }
   if (rest_iters > 0) {
     dfm->run(rest_iters, epsilon);
     save_state(dfm.get(), steps_path / std::to_string(num_iters));
+    //save_energy(dfm->energy(), rest_iters, steps_path / std::to_string(num_iters));
   }
   printf("%s: Creating plots\n", overview_path.string().c_str());
 
   save_state(dfm.get(), overview_path);
-  save_energy(dfm->energy(), num_iters, overview_path);
+  //save_energy(dfm->energy(), num_iters, overview_path);  // Removed, since it is a patch of all loop_iters long h_E
 
 /*
   dfm->run(num_iters, epsilon);
