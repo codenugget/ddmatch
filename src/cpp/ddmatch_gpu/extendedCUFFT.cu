@@ -14,13 +14,9 @@
 #define THREADS_PER_BLOCK 32
 #define BATCH 1
 
-typedef float2 Complex;  // a pair z=(x,y) of floats, access by z.x or z.y
+//#define CUDA_ERROR_CHECK  // Uncomment for error check
 
-/*
-Next steps:
-  - Create .h file with class definition? 
-  - Then make constructor.
-*/
+typedef float2 Complex;  // a pair z=(x,y) of floats, access by z.x or z.y
 
 
 static __host__ inline void create_idmap(float*, float*, const int, const int);
@@ -199,10 +195,12 @@ void extendedCUFFT::setup() {
   cudaMemcpy(phiinvy, m_phiinvy, sizeof(float)*NX, cudaMemcpyHostToDevice);
   cudaMemcpy(Linv, m_multipliers, sizeof(float)*NX, cudaMemcpyHostToDevice);
   //cudaMemcpy(d_data, idx, sizeof(float)*NX, cudaMemcpyHostToDevice);
+#ifdef CUDA_ERROR_CHECK
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, " <extendedCUFFT::test()> Cuda error: Failed to copy data to GPU\n");
     return;	
   }
+#endif
 }
 
 
@@ -253,7 +251,7 @@ int extendedCUFFT::run(int niter, float epsilon) {
     printf(" ***#?! CUDA error upon entering run. Message: %s\n", cudaGetErrorString(err));
     return -1;	
   }
-
+  cufftResult fftres;
 /*
   cudaFree(d_E);
   err = cudaDeviceSynchronize();
@@ -277,10 +275,12 @@ int extendedCUFFT::run(int niter, float epsilon) {
   Complex *Ja_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
   Complex *Jb_result = reinterpret_cast<Complex *>( malloc(sizeof(Complex)*(NX/2+1)) );
 
+#ifdef CUDA_ERROR_CHECK
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to allocate memory on the CPU\n");
     return -1;	
   }
+#endif
 
   // Allocate device memory
   cudaMalloc((void**)&m_aa, sizeof(float)*NX);  // diffeo gradient
@@ -307,37 +307,13 @@ int extendedCUFFT::run(int niter, float epsilon) {
   cudaMalloc((void**)&odata, sizeof(Complex)*NX);
   cudaMalloc((void**)&odatay, sizeof(Complex)*NX);
   cudaMalloc((void**)&odatax, sizeof(Complex)*NX);
+#ifdef CUDA_ERROR_CHECK
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to allocate memory on the GPU\n");
     return -1;
   }
+#endif
 
-  // checkLastCUDAError("<run> cudaMalloc");  // To complete..
-
-
-
-  // initialize itentity mapping
-  //dim3 blocks(NX/16,NX/16);
-  //dim3 threads(16,16);
-  if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed to initialize diffeomorphisms on GPU\n");
-    return -1;
-  }
-  /*
-  cudaMemcpy(h_idx, d_idx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
-  cudaMemcpy(h_idy, d_idy, sizeof(float)*NX, cudaMemcpyDeviceToHost);
-  if (cudaGetLastError() != cudaSuccess){
-    fprintf(stderr, "Cuda error: Failed to copy GPU data idx/idy to host\n");
-    return -1;
-  }
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("h_idx[%d] = %f\n", i, h_idx[i]);
-  }
-  // ...and this
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("h_idy[%d] = %f\n", i, h_idy[i]);
-  }
-  */
   // TODO: manage threads and blocks in json configuration 
   //int num_threads = 16;
   //int num_blocks = (num_threads-1 + THREADS_PER_BLOCK)/THREADS_PER_BLOCK;
@@ -352,23 +328,25 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
     image_compose_2d<<<blocks,threads>>>(d_I0, d_phiinvx, d_phiinvy, d_I, w, h);
 
-/*
+    // Currently, no support for energy (at each iteration) export
+    /*
     Norm2<<<NX,1>>>(d_E, d_I1, d_I, k, NX);  // returns sum( (I1-I)^2 )
     err = cudaGetLastError();
     if (err != cudaSuccess){
       printf(" ***#?! CUDA error. Failed to compute L2 energy in <extendedCUFFT::run>. Message: %s\n", cudaGetErrorString(err));
       return -1;	
     } 
-*/
+    */
 
     diffeo_gradient_x_2d<<<blocks,threads>>>(d_phiinvx, m_bb, m_ba, w, h);
     diffeo_gradient_y_2d<<<blocks,threads>>>(d_phiinvy, m_ab, m_aa, w, h);
+#ifdef CUDA_ERROR_CHECK
     err = cudaGetLastError();
     if (err != cudaSuccess){
       printf(" ***#?! CUDA error. Failed to compose image with diffeo on GPU. Message: %s\n", cudaGetErrorString(err));
       return -1;	
     }
-
+#endif
   //  Decide whether to use indexing (a,b) or (y,x) 
   //  There is confusion with (y,x), since usually x is first, but not on images like here...  
 
@@ -387,14 +365,12 @@ int extendedCUFFT::run(int niter, float epsilon) {
     //      df_a[i*w + j] = (img[(i+1)*w+j] - img[(i-1)*w+j])/2.0f;
     //      df_b[i*w + j] = (img[i*w + j+1] - img[i*w + j-1])/2.0f;
 
-
     Jmapping<<<NX,1>>>(d_Jy, d_Jx, 
        m_haa,    m_hab,    m_hba,    m_hbb, 
        m_gaa,    m_gab,    m_gba,    m_gbb, 
        m_dhaada, m_dhabda, m_dhbada, m_dhbbda, 
        m_dhaadb, m_dhabdb, m_dhbadb, m_dhbbdb, 
        NX);
-
 
     image_gradient_2d<<<blocks,threads>>>(d_I, d_dIdy, d_dIdx, w, h);
 
@@ -407,44 +383,66 @@ int extendedCUFFT::run(int niter, float epsilon) {
 
     // Perform Fourier transform
     // cufftResult   cufftPlan2d(cufftHandle *plan, int nx, int ny, cufftType type);
-    if (cufftPlan2d(&plan, m_cols, m_rows, CUFFT_C2C) != CUFFT_SUCCESS){
-      fprintf(stderr, "CUFFT error: Plan creation failed");
+    fftres = cufftPlan2d(&plan, m_cols, m_rows, CUFFT_C2C);
+#ifdef CUDA_ERROR_CHECK
+    if (fftres != CUFFT_SUCCESS){
+      printf(" ***#!? CUFFT error: Plan creation failed. Error code: %d\n", fftres);
       return -1;
     }
-    if (cufftExecC2C(plan, odatay, odatay, CUFFT_FORWARD) != CUFFT_SUCCESS){
-      fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
+#endif
+    fftres = cufftExecC2C(plan, odatay, odatay, CUFFT_FORWARD);
+#ifdef CUDA_ERROR_CHECK
+    if (fftres != CUFFT_SUCCESS){
+      printf(" ***#!? CUFFT error: cufftExecR2C Forward failed. Error code: %d\n", fftres);
       return -1;
     }
-    if (cufftExecC2C(plan, odatax, odatax, CUFFT_FORWARD) != CUFFT_SUCCESS){
-      fprintf(stderr, "CUFFT error: cufftExecR2C Forward failed");
+#endif
+    fftres = cufftExecC2C(plan, odatax, odatax, CUFFT_FORWARD);
+#ifdef CUDA_ERROR_CHECK
+    if (fftres != CUFFT_SUCCESS){
+      printf(" ***#!? CUFFT error: cufftExecR2C Forward failed. Error code: %d\n", fftres);
       return -1;
     }
-    if (cudaDeviceSynchronize() != cudaSuccess){
-      fprintf(stderr, "Cuda error: Failed to synchronize after forward FFT\n");
+#endif
+    //err = cudaDeviceSynchronize();
+#ifdef CUDA_ERROR_CHECK
+    if (err != cudaSuccess){
+      printf(" ***#!? Cuda error: Failed to synchronize after forward FFT. Message: %s\n", cudaGetErrorString(err));
       return -1;
     }
+#endif
 
     // Apply inverse of the smoothing operator (inertia operator)
     MultComplexAndReal<<<NX, 1>>>(odatay, Linv, NX); 
     MultComplexAndReal<<<NX, 1>>>(odatax, Linv, NX);
     //PointwiseScale<<<NX, 1>>>(data, NX, 1.0f / 2);
-
+#ifdef CUDA_ERROR_CHECK
     if (cudaGetLastError() != cudaSuccess){
-      fprintf(stderr, "Cuda error: Failed to multiply data with Linv\n");
+      fprintf(stderr, " ***#!? Cuda error: Failed to multiply data with Linv.");
       return -1;	
     }
-    if (cufftExecC2C(plan, odatay, odatay, CUFFT_INVERSE) != CUFFT_SUCCESS){
-      fprintf(stderr, "CUFFT error: cufftExecC2C Backward failed");
+#endif
+    fftres = cufftExecC2C(plan, odatay, odatay, CUFFT_INVERSE);
+#ifdef CUDA_ERROR_CHECK
+    if (fftres != CUFFT_SUCCESS){
+      printf(" ***#!? CUFFT error: cufftExecC2C Backward failed. Error code: %d\n", fftres);
       return -1;
     }
-    if (cufftExecC2C(plan, odatax, odatax, CUFFT_INVERSE) != CUFFT_SUCCESS){
-      fprintf(stderr, "CUFFT error: cufftExecC2C Backward failed");
+#endif
+    fftres = cufftExecC2C(plan, odatax, odatax, CUFFT_INVERSE);
+#ifdef CUDA_ERROR_CHECK
+    if (fftres != CUFFT_SUCCESS){
+      printf(" ***#!? CUFFT error: cufftExecC2C Backward failed. Error code: %d\n", fftres);
       return -1;
     }
-    if (cudaDeviceSynchronize() != cudaSuccess){
-     fprintf(stderr, "Cuda error: Failed to synchronize after inverse FFT\n");
+#endif
+    err = cudaDeviceSynchronize();
+#ifdef CUDA_ERROR_CHECK
+    if (err != cudaSuccess){
+     printf(" ***#!? Cuda error: Failed to synchronize after inverse FFT. Message: %s\n", cudaGetErrorString(err));
      return -1;	
-    }	
+    }
+#endif
     // Divide by number of elements in data set to get back original data
     ComplexPointwiseScale<<<NX, 1>>>(odatax, NX, 1.0f / NX);
     ComplexPointwiseScale<<<NX, 1>>>(odatay, NX, 1.0f / NX);
@@ -456,11 +454,12 @@ int extendedCUFFT::run(int niter, float epsilon) {
     // Newton forward steps with step size = epsilon
     PointwiseScale<<<NX,1>>>(d_Jy, NX, epsilon);
     PointwiseScale<<<NX,1>>>(d_Jx, NX, epsilon);
+#ifdef CUDA_ERROR_CHECK
     if (cudaGetLastError() != cudaSuccess){
       fprintf(stderr, "CUFFT error: Scaling failed successfully\n");
       return -1;
     }
-
+#endif
     PointwiseDiff<<<NX,1>>>(d_Xy, d_idy, d_Jy, NX);
     PointwiseDiff<<<NX,1>>>(d_Xx, d_idx, d_Jx, NX);
 
@@ -469,48 +468,27 @@ int extendedCUFFT::run(int niter, float epsilon) {
     CopyTo<<<NX,1>>>(d_phiinvy, tmpy, NX);
     CopyTo<<<NX,1>>>(d_phiinvx, tmpx, NX);
 
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();  // TODO: investigate if sync is needed here
   } //for k<niter
 
-  cudaMemcpy(h_idy, d_idy, sizeof(float)*NX, cudaMemcpyDeviceToHost);
-  cudaMemcpy(h_idx, d_idx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
+  // TODO: export energy
   //cudaMemcpy(h_E, d_E, sizeof(float)*niter, cudaMemcpyDeviceToHost);
   cudaMemcpy(m_phiinvy, d_phiinvy, sizeof(float)*NX, cudaMemcpyDeviceToHost);
   cudaMemcpy(m_phiinvx, d_phiinvx, sizeof(float)*NX, cudaMemcpyDeviceToHost);
-  //cudaMemcpy(h_result, odata_a, sizeof(Complex)*(NX/2+1), cudaMemcpyDeviceToHost);
+#ifdef CUDA_ERROR_CHECK
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
     return -1;
   }
-
-  // save to file
-  // ...but for now, we print
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("m_idy[%d] = %f\n", i, h_idy[i]);
-  }
-  // ...and this
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("h_idx[%d] = %f\n", i, h_idx[i]);
-  }
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("m_phiinvx[%d] = %f\n", i, m_phiinvx[i]);
-  }
-/*
-  // ...and this
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("m_phiinvy[%d] = %f\n", i, m_phiinvy[i]);
-  }
-  for (unsigned int i = 0; i < 10; ++i) {
-    printf("h_result[%d].x = %f\n", i, h_result[i].x);
-  }
-*/
-  
+#endif
+  // Copy image to host
   cudaMemcpy(m_I, d_I, sizeof(float)*NX, cudaMemcpyDeviceToHost);
+#ifdef CUDA_ERROR_CHECK
   if (cudaGetLastError() != cudaSuccess){
     fprintf(stderr, "Cuda error: Failed to copy GPU data to host\n");
     return -1;
   }
-
+#endif
   // cleanup memory
   free(h_result);
 
